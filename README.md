@@ -3,6 +3,7 @@
 东南风文学社官网，静态前端位于 `dist/`，数据、账号与私有文件由 Supabase 提供，通过 GitHub Actions 发布到 GitHub Pages。
 
 - 线上地址：<https://delta-1873.github.io/dongnanfeng/>
+- 投稿邮箱：`sewseu@163.com`
 - Supabase 项目：`cgkjtsuyjdkhcwhqygyx`
 - 部署配置：`.github/workflows/pages.yml`
 
