@@ -15,6 +15,7 @@ html { scroll-behavior: smooth; }
 body { margin: 0; color: var(--ink); background: var(--paper); font-family: var(--sans); font-size: 16px; line-height: 1.7; }
 a { color: inherit; }
 button { font: inherit; }
+button:disabled { cursor: wait; opacity: .58; }
 .skip-link { position: fixed; left: 1rem; top: -5rem; z-index: 100; padding: .65rem 1rem; color: white; background: var(--red); }
 .skip-link:focus { top: 1rem; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
@@ -147,6 +148,9 @@ dialog::backdrop { background: rgba(5,24,39,.72); backdrop-filter: blur(4px); }
 .form-grid .full { grid-column: 1 / -1; }
 .create-form textarea { min-height: 130px; resize: vertical; }
 .storage-note { margin: 0 0 1rem; color: #7a858b; font-size: .78rem; }
+.sync-toast { position: fixed; z-index: 100; right: 1.25rem; bottom: 1.25rem; max-width: min(390px, calc(100vw - 2.5rem)); padding: .85rem 1.05rem; color: white; background: var(--ink); box-shadow: 0 12px 35px rgba(4,18,30,.28); font-size: .9rem; }
+.sync-toast[data-type="success"] { background: #245c4c; }
+.sync-toast[data-type="error"] { background: #a93424; }
 
 .quote-band { display: grid; min-height: 470px; place-content: center; padding: 5rem 1.25rem; text-align: center; color: var(--white); background: var(--ink); }
 .quote-band p { margin: 0 0 1.5rem; font-family: var(--serif); font-size: clamp(2rem, 4.6vw, 4.5rem); line-height: 1.45; }

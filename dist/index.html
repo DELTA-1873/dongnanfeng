@@ -8,7 +8,7 @@
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23102a43'/%3E%3Cpath d='M13 42c13-3 20-12 25-28 2 11 7 18 15 22-10 0-18 4-26 13 2-8-2-9-14-7Z' fill='%23f6f1e7'/%3E%3Ccircle cx='49' cy='15' r='5' fill='%23d9472b'/%3E%3C/svg%3E" />
     <title>东南风文学社｜在山海之间写作</title>
     <link rel="stylesheet" href="./styles.css" />
-    <script src="./script.js" defer></script>
+    <script src="./script.js" type="module"></script>
   </head>
   <body>
     <a class="skip-link" href="#main">跳到正文</a>
@@ -201,12 +201,14 @@
               <label>封面色<select id="create-color" name="color"><option value="blue">远山蓝</option><option value="red">朱砂红</option><option value="green">松烟绿</option><option value="gold">秋叶金</option><option value="black">墨黑</option></select></label>
               <label class="full">摘要<textarea name="summary" maxlength="300" placeholder="用几句话介绍这部作品……" required></textarea></label>
             </div>
-            <p class="storage-note">新建条目仅保存在当前浏览器中。</p>
+            <p class="storage-note">新建条目将同步到云端，并在审核后进入公共目录。</p>
             <button class="button button-primary" type="submit">保存到目录 <span aria-hidden="true">→</span></button>
           </form>
         </div>
       </dialog>
     </main>
+
+    <div class="sync-toast" id="sync-toast" role="status" aria-live="polite" hidden></div>
 
     <footer>
       <a class="brand footer-brand" href="#top"><span class="brand-mark" aria-hidden="true">东</span><span>东南风文学社</span></a>

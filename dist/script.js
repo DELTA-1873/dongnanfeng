@@ -1,54 +1,111 @@
-const STORAGE_KEY = 'dongnanfeng-library-v1';
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 const COLORS = new Set(['blue', 'red', 'green', 'gold', 'black']);
-
-const seedBooks = [
-  { id: 'migratory-letter', title: '候鸟没有寄回的信', author: '林屿', genre: '小说', issue: '第 24 期 · 2026 秋', color: 'blue', summary: '那年九月，整座城都在等一场台风。只有我知道，真正要离开的并不是夏天。一封迟到多年的信，让两个在海边长大的年轻人重新面对告别与故乡。', votes: 86, baseRating: 4.7, baseRatings: 42, createdAt: '2026-09-18', comments: [{ name: '南枝', text: '结尾像潮水退去以后留在沙滩上的光，很安静，也很有力量。', date: '2026-09-19' }] },
-  { id: 'tide-etude', title: '潮汐练习曲', author: '周见山', genre: '诗歌', issue: '第 24 期 · 2026 秋', color: 'red', summary: '十二首关于海、离别与重逢的短诗。诗人把潮汐当作时间的另一副面孔，在反复抵达与离去之间，辨认生活留下的微光。', votes: 64, baseRating: 4.8, baseRatings: 36, createdAt: '2026-09-16', comments: [] },
-  { id: 'night-train', title: '夜车经过旧城', author: '陈未晚', genre: '散文', issue: '第 23 期 · 2026 春', color: 'green', summary: '车窗像一卷缓慢展开的胶片，收藏沿途每一盏未眠的灯。作者从一趟夜车出发，写下记忆中的旧街、家人和不断改变的城市。', votes: 51, baseRating: 4.5, baseRatings: 29, createdAt: '2026-05-20', comments: [{ name: '纸鸢', text: '读完很想坐一次没有目的地的慢车。', date: '2026-09-02' }] },
-  { id: 'spring-translation', title: '春天的另一种译法', author: '许南枝', genre: '诗歌', issue: '第 23 期 · 2026 春', color: 'gold', summary: '我们把新叶叫作重逢，把雨声叫作尚未说完。这组诗尝试翻译春天，也翻译成长中那些无法直接说出的情绪。', votes: 73, baseRating: 4.6, baseRatings: 31, createdAt: '2026-05-12', comments: [] },
-  { id: 'island-bookshop', title: '岛屿书店', author: '唐砚', genre: '小说', issue: '第 22 期 · 2025 冬', color: 'black', summary: '一间只在退潮后开门的书店，替岛上的人保管未曾寄出的故事。年轻的店员逐渐发现，书架上也藏着属于自己的那一本。', votes: 92, baseRating: 4.9, baseRatings: 55, createdAt: '2025-12-08', comments: [{ name: '鹭川', text: '设定很迷人，读完仍然记得那间书店的气味。', date: '2026-01-11' }] },
-  { id: 'south-window', title: '南窗手记', author: '闻舟', genre: '散文', issue: '第 22 期 · 2025 冬', color: 'blue', summary: '从宿舍朝南的窗口望出去，是操场、树梢和四年里不断迁徙的云。二十篇短章，记录一段校园生活中容易被忽略的时刻。', votes: 47, baseRating: 4.4, baseRatings: 25, createdAt: '2025-12-01', comments: [] }
-];
-
-const loadBooks = () => {
-  try {
-    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    return Array.isArray(stored) && stored.length ? stored : structuredClone(seedBooks);
-  } catch {
-    return structuredClone(seedBooks);
-  }
-};
-
-let books = loadBooks();
+let books = [];
+let currentUser = null;
 let selectedBookId = null;
 let activeFilter = 'all';
+let refreshTimer = null;
 
 const $ = (selector, scope = document) => scope.querySelector(selector);
 const $$ = (selector, scope = document) => [...scope.querySelectorAll(selector)];
 const escapeHtml = (value = '') => String(value).replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
 const safeColor = (color) => COLORS.has(color) ? color : 'blue';
-const saveBooks = () => localStorage.setItem(STORAGE_KEY, JSON.stringify(books));
-const ratingFor = (book) => {
-  const userCount = book.userRating ? 1 : 0;
-  const count = (book.baseRatings || 0) + userCount;
-  if (!count) return { average: 0, count: 0 };
-  return { average: (((book.baseRating || 0) * (book.baseRatings || 0)) + (book.userRating || 0)) / count, count };
-};
-const votesFor = (book) => (book.votes || 0) + (book.userVoted ? 1 : 0);
 const coverMarkup = (book) => `
   <span class="cover-series">东南风 · ${escapeHtml(book.genre)}</span>
   <span class="cover-title">${escapeHtml(book.title)}</span>
   <span class="cover-author">${escapeHtml(book.author)} 著</span>`;
+
+function showToast(message, type = 'info', duration = 2800) {
+  const toast = $('#sync-toast');
+  toast.textContent = message;
+  toast.dataset.type = type;
+  toast.hidden = false;
+  clearTimeout(showToast.timer);
+  if (duration) showToast.timer = setTimeout(() => { toast.hidden = true; }, duration);
+}
+
+function readableError(error) {
+  console.error(error);
+  if (error?.code === '23505') return '你已经为这部作品投过票。';
+  if (error?.message?.includes('relation') && error?.message?.includes('does not exist')) return '数据库尚未初始化，请先执行建表脚本。';
+  return error?.message || '云端服务暂时不可用，请稍后重试。';
+}
+
+async function ensureAnonymousUser() {
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  if (sessionData.session?.user) return sessionData.session.user;
+  const { data, error } = await supabase.auth.signInAnonymously();
+  if (error) throw error;
+  return data.user;
+}
+
+async function loadLibrary({ refreshDetail = false, quiet = false } = {}) {
+  if (!quiet) showToast('正在同步云端书库…', 'info', 0);
+  const [bookResult, commentResult, voteResult, ratingResult] = await Promise.all([
+    supabase.from('books').select('*').order('created_at', { ascending: false }),
+    supabase.from('comments').select('*').order('created_at', { ascending: true }),
+    supabase.from('votes').select('*'),
+    supabase.from('ratings').select('*')
+  ]);
+  const error = bookResult.error || commentResult.error || voteResult.error || ratingResult.error;
+  if (error) throw error;
+
+  books = bookResult.data.map((record) => {
+    const comments = commentResult.data.filter((item) => item.book_id === record.id).map((item) => ({
+      name: item.display_name,
+      text: item.body,
+      date: new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium' }).format(new Date(item.created_at))
+    }));
+    const votes = voteResult.data.filter((item) => item.book_id === record.id);
+    const ratings = ratingResult.data.filter((item) => item.book_id === record.id);
+    const userRating = ratings.find((item) => item.user_id === currentUser.id)?.score || 0;
+    return {
+      id: record.id,
+      title: record.title,
+      author: record.author,
+      genre: record.genre,
+      issue: record.issue,
+      color: record.color,
+      summary: record.summary,
+      createdAt: record.created_at,
+      custom: record.created_by === currentUser.id,
+      approved: record.approved,
+      baseVotes: record.base_votes,
+      baseRating: Number(record.base_rating),
+      baseRatings: record.base_ratings,
+      liveVotes: votes.length,
+      liveRatings: ratings,
+      userVoted: votes.some((item) => item.user_id === currentUser.id),
+      userRating,
+      comments
+    };
+  });
+
+  renderCatalog();
+  if (refreshDetail && selectedBookId && $('#book-dialog').open) {
+    renderBookDetail(books.find((item) => item.id === selectedBookId));
+  }
+  if (!quiet) showToast('已与云端同步', 'success');
+}
+
+const ratingFor = (book) => {
+  const liveSum = book.liveRatings.reduce((sum, item) => sum + item.score, 0);
+  const count = book.baseRatings + book.liveRatings.length;
+  return { average: count ? ((book.baseRating * book.baseRatings) + liveSum) / count : 0, count };
+};
+const votesFor = (book) => book.baseVotes + book.liveVotes;
 
 function renderCatalog() {
   const term = $('#catalog-search').value.trim().toLowerCase();
   const sort = $('#catalog-sort').value;
   const matches = books.filter((book) => {
     const filterMatch = activeFilter === 'all' || (activeFilter === '自建' ? book.custom : book.genre === activeFilter);
-    const haystack = `${book.title} ${book.author} ${book.summary}`.toLowerCase();
-    return filterMatch && haystack.includes(term);
+    return filterMatch && `${book.title} ${book.author} ${book.summary}`.toLowerCase().includes(term);
   });
-
   matches.sort((a, b) => {
     if (sort === 'rating') return ratingFor(b).average - ratingFor(a).average;
     if (sort === 'votes') return votesFor(b) - votesFor(a);
@@ -59,55 +116,69 @@ function renderCatalog() {
   $('#empty-state').hidden = matches.length !== 0;
   $('#book-grid').innerHTML = matches.map((book) => {
     const rating = ratingFor(book);
+    const reviewState = book.custom && !book.approved ? ' · 待审核' : '';
     return `<article class="book-card">
       <button class="book-cover-button" type="button" data-book-id="${escapeHtml(book.id)}" aria-label="查看《${escapeHtml(book.title)}》详情">
         <span class="book-cover" data-color="${safeColor(book.color)}">${coverMarkup(book)}</span>
       </button>
       <div class="book-info">
         <h3 title="${escapeHtml(book.title)}">${escapeHtml(book.title)}</h3>
-        <p>${escapeHtml(book.author)} · ${escapeHtml(book.genre)}${book.custom ? ' · 自建' : ''}</p>
-        <div class="book-stats"><span class="score">★ ${rating.count ? rating.average.toFixed(1) : '暂无'}</span><span>△ ${votesFor(book)} 票 · ${book.comments?.length || 0} 评</span></div>
+        <p>${escapeHtml(book.author)} · ${escapeHtml(book.genre)}${book.custom ? ' · 自建' : ''}${reviewState}</p>
+        <div class="book-stats"><span class="score">★ ${rating.count ? rating.average.toFixed(1) : '暂无'}</span><span>△ ${votesFor(book)} 票 · ${book.comments.length} 评</span></div>
       </div>
     </article>`;
   }).join('');
+}
+
+function renderBookDetail(book) {
+  if (!book) return;
+  $('#detail-cover').dataset.color = safeColor(book.color);
+  $('#detail-cover').innerHTML = coverMarkup(book);
+  const state = book.custom && !book.approved ? ' · 待审核' : '';
+  $('#detail-meta').textContent = `${book.genre} · ${book.author} · ${book.issue || '独立书目'}${state}`;
+  $('#detail-title').textContent = book.title;
+  $('#detail-summary').textContent = book.summary;
+  renderVotes(book);
+  renderRating(book);
+  renderComments(book);
 }
 
 function openBook(id) {
   const book = books.find((item) => item.id === id);
   if (!book) return;
   selectedBookId = id;
-  $('#detail-cover').dataset.color = safeColor(book.color);
-  $('#detail-cover').innerHTML = coverMarkup(book);
-  $('#detail-meta').textContent = `${book.genre} · ${book.author} · ${book.issue || '独立书目'}${book.custom ? ' · 我的条目' : ''}`;
-  $('#detail-title').textContent = book.title;
-  $('#detail-summary').textContent = book.summary;
-  renderVotes(book);
-  renderRating(book);
-  renderComments(book);
+  renderBookDetail(book);
   $('#book-dialog').showModal();
 }
 
 function renderVotes(book) {
   $('#detail-votes').textContent = votesFor(book);
-  $('#vote-button').setAttribute('aria-pressed', String(Boolean(book.userVoted)));
-  $('#vote-button').firstChild.textContent = book.userVoted ? '▽' : '△';
+  $('#vote-button').setAttribute('aria-pressed', String(book.userVoted));
+  $('#vote-button').querySelector('span').textContent = book.userVoted ? '▽' : '△';
 }
 
 function renderRating(book) {
   const rating = ratingFor(book);
   $('#rating-average').textContent = rating.count ? rating.average.toFixed(1) : '—';
   $('#rating-count').textContent = rating.count ? `${rating.count} 人评分` : '暂无评分';
-  $('#rating-stars').innerHTML = [1, 2, 3, 4, 5].map((score) => `<button class="star ${score <= (book.userRating || 0) ? 'selected' : ''}" type="button" data-score="${score}" aria-label="评 ${score} 星" aria-pressed="${score === book.userRating}">★</button>`).join('');
+  $('#rating-stars').innerHTML = [1, 2, 3, 4, 5].map((score) => `<button class="star ${score <= book.userRating ? 'selected' : ''}" type="button" data-score="${score}" aria-label="评 ${score} 星" aria-pressed="${score === book.userRating}">★</button>`).join('');
 }
 
 function renderComments(book) {
-  const comments = book.comments || [];
-  $('#comments-count').textContent = `${comments.length} 条`;
-  $('#comment-list').innerHTML = comments.length ? [...comments].reverse().map((comment) => `<article class="comment"><header><strong>${escapeHtml(comment.name)}</strong><time>${escapeHtml(comment.date)}</time></header><p>${escapeHtml(comment.text)}</p></article>`).join('') : '<p class="comment-empty">还没有评论，来写下第一条阅读感受吧。</p>';
+  $('#comments-count').textContent = `${book.comments.length} 条`;
+  $('#comment-list').innerHTML = book.comments.length ? [...book.comments].reverse().map((comment) => `<article class="comment"><header><strong>${escapeHtml(comment.name)}</strong><time>${escapeHtml(comment.date)}</time></header><p>${escapeHtml(comment.text)}</p></article>`).join('') : '<p class="comment-empty">还没有评论，来写下第一条阅读感受吧。</p>';
 }
 
 function closeDialog(dialog) {
   if (dialog?.open) dialog.close();
+}
+
+async function withBusy(button, action) {
+  const previous = button.disabled;
+  button.disabled = true;
+  try { await action(); }
+  catch (error) { showToast(readableError(error), 'error', 5000); }
+  finally { button.disabled = previous; }
 }
 
 const menuButton = $('.menu-button');
@@ -139,38 +210,50 @@ $('#book-grid').addEventListener('click', (event) => {
   if (button) openBook(button.dataset.bookId);
 });
 
-$('#vote-button').addEventListener('click', () => {
+$('#vote-button').addEventListener('click', (event) => withBusy(event.currentTarget, async () => {
   const book = books.find((item) => item.id === selectedBookId);
   if (!book) return;
-  book.userVoted = !book.userVoted;
-  saveBooks();
-  renderVotes(book);
-  renderCatalog();
-});
+  const query = book.userVoted
+    ? supabase.from('votes').delete().eq('book_id', book.id).eq('user_id', currentUser.id)
+    : supabase.from('votes').insert({ book_id: book.id, user_id: currentUser.id });
+  const { error } = await query;
+  if (error) throw error;
+  await loadLibrary({ refreshDetail: true, quiet: true });
+  showToast(book.userVoted ? '已撤销投票' : '投票成功', 'success');
+}));
 
 $('#rating-stars').addEventListener('click', (event) => {
   const button = event.target.closest('[data-score]');
-  const book = books.find((item) => item.id === selectedBookId);
-  if (!button || !book) return;
-  book.userRating = Number(button.dataset.score);
-  saveBooks();
-  renderRating(book);
-  renderCatalog();
+  if (!button) return;
+  withBusy(button, async () => {
+    const { error } = await supabase.from('ratings').upsert({
+      book_id: selectedBookId,
+      user_id: currentUser.id,
+      score: Number(button.dataset.score)
+    }, { onConflict: 'book_id,user_id' });
+    if (error) throw error;
+    await loadLibrary({ refreshDetail: true, quiet: true });
+    showToast('评分已保存', 'success');
+  });
 });
 
 $('#comment-form').addEventListener('submit', (event) => {
   event.preventDefault();
-  const book = books.find((item) => item.id === selectedBookId);
-  if (!book) return;
-  const name = $('#comment-name').value.trim();
-  const text = $('#comment-text').value.trim();
-  if (!name || !text) return;
-  book.comments ||= [];
-  book.comments.push({ name, text, date: new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium' }).format(new Date()) });
-  saveBooks();
-  event.currentTarget.reset();
-  renderComments(book);
-  renderCatalog();
+  const submit = event.currentTarget.querySelector('button[type="submit"]');
+  withBusy(submit, async () => {
+    const name = $('#comment-name').value.trim();
+    const body = $('#comment-text').value.trim();
+    const { error } = await supabase.from('comments').insert({
+      book_id: selectedBookId,
+      author_id: currentUser.id,
+      display_name: name,
+      body
+    });
+    if (error) throw error;
+    event.currentTarget.reset();
+    await loadLibrary({ refreshDetail: true, quiet: true });
+    showToast('评论已发布', 'success');
+  });
 });
 
 $('#open-create').addEventListener('click', () => {
@@ -182,51 +265,58 @@ $('#open-create').addEventListener('click', () => {
 
 function updateCreatePreview() {
   const form = $('#create-form');
-  const title = $('#create-title-input').value.trim() || '你的书名';
-  const author = $('[name="author"]', form).value.trim() || '作者';
-  const genre = $('[name="genre"]', form).value;
   const preview = $('#create-cover-preview');
   preview.dataset.color = safeColor($('#create-color').value);
-  preview.innerHTML = coverMarkup({ title, author, genre });
+  preview.innerHTML = coverMarkup({
+    title: $('#create-title-input').value.trim() || '你的书名',
+    author: $('[name="author"]', form).value.trim() || '作者',
+    genre: $('[name="genre"]', form).value
+  });
 }
 
 $('#create-form').addEventListener('input', updateCreatePreview);
 $('#create-form').addEventListener('submit', (event) => {
   event.preventDefault();
-  const data = new FormData(event.currentTarget);
-  const book = {
-    id: crypto.randomUUID ? crypto.randomUUID() : `custom-${Date.now()}`,
-    title: String(data.get('title')).trim(),
-    author: String(data.get('author')).trim(),
-    genre: String(data.get('genre')),
-    issue: String(data.get('issue')).trim(),
-    color: safeColor(String(data.get('color'))),
-    summary: String(data.get('summary')).trim(),
-    votes: 0,
-    baseRating: 0,
-    baseRatings: 0,
-    createdAt: new Date().toISOString(),
-    comments: [],
-    custom: true
-  };
-  books.unshift(book);
-  saveBooks();
-  closeDialog($('#create-dialog'));
-  activeFilter = 'all';
-  $$('#catalog-filters .filter').forEach((item) => {
-    const selected = item.dataset.filter === 'all';
-    item.classList.toggle('active', selected);
-    item.setAttribute('aria-pressed', String(selected));
+  const submit = event.currentTarget.querySelector('button[type="submit"]');
+  withBusy(submit, async () => {
+    const data = new FormData(event.currentTarget);
+    const { data: created, error } = await supabase.from('books').insert({
+      title: String(data.get('title')).trim(),
+      author: String(data.get('author')).trim(),
+      genre: String(data.get('genre')),
+      issue: String(data.get('issue')).trim() || null,
+      color: safeColor(String(data.get('color'))),
+      summary: String(data.get('summary')).trim(),
+      created_by: currentUser.id,
+      approved: false
+    }).select('id').single();
+    if (error) throw error;
+    closeDialog($('#create-dialog'));
+    await loadLibrary({ quiet: true });
+    renderCatalog();
+    openBook(created.id);
+    showToast('书目已保存，审核后将对所有读者公开', 'success', 4500);
   });
-  $('#catalog-search').value = '';
-  renderCatalog();
-  openBook(book.id);
 });
 
 $$('[data-close]').forEach((button) => button.addEventListener('click', () => closeDialog($(`#${button.dataset.close}`))));
 $$('dialog').forEach((dialog) => dialog.addEventListener('click', (event) => {
   if (event.target === dialog) closeDialog(dialog);
 }));
+
+function subscribeToChanges() {
+  supabase.channel('dongnanfeng-library')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'books' }, scheduleRefresh)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, scheduleRefresh)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'votes' }, scheduleRefresh)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'ratings' }, scheduleRefresh)
+    .subscribe();
+}
+
+function scheduleRefresh() {
+  clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(() => loadLibrary({ refreshDetail: true, quiet: true }).catch((error) => showToast(readableError(error), 'error', 5000)), 250);
+}
 
 const observer = new IntersectionObserver((entries) => {
   entries.forEach((entry) => {
@@ -238,4 +328,27 @@ const observer = new IntersectionObserver((entries) => {
 }, { threshold: 0.12 });
 $$('.reveal').forEach((element) => observer.observe(element));
 $('#year').textContent = new Date().getFullYear();
-renderCatalog();
+
+async function init() {
+  try {
+    currentUser = await ensureAnonymousUser();
+    try {
+      await loadLibrary();
+    } catch (error) {
+      const staleSession = /jwt|token|session/i.test(error?.message || '');
+      if (!staleSession) throw error;
+      await supabase.auth.signOut({ scope: 'local' });
+      currentUser = await ensureAnonymousUser();
+      await loadLibrary();
+    }
+    subscribeToChanges();
+  } catch (error) {
+    showToast(readableError(error), 'error', 0);
+    $('#catalog-count').textContent = '云端书库尚未就绪';
+    $('#empty-state').hidden = false;
+    $('#empty-state strong').textContent = '需要先初始化数据库';
+    $('#empty-state span').textContent = '请在 Supabase SQL Editor 中执行项目附带的 schema.sql。';
+  }
+}
+
+init();

@@ -8,7 +8,11 @@
 - 封面和摘要预览
 - 评论、投票与五星评分
 - 自建书目和实时封面预览
-- 浏览器本地数据持久化
+- Supabase 云端数据、匿名身份和实时同步
+
+## 数据库初始化
+
+在 Supabase Dashboard 的 SQL Editor 中执行 [`supabase/schema.sql`](supabase/schema.sql)，然后再发布前端。公开连接配置位于 `dist/config.js`；不要把 Secret Key 或 `service_role` Key 放进仓库。
 
 本地预览：
 
