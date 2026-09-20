@@ -11,6 +11,7 @@ let activeFilter = 'all';
 let issueArticles = [];
 let activeArticleFilter = '全部';
 let refreshTimer = null;
+let activeFeedback = null;
 let pdfModulePromise = null;
 let readerPdf = null;
 let readerLoadingTask = null;
@@ -188,6 +189,7 @@ async function loadMagazines() {
   const issues = [...(data || [])];
   if (!issues.some((issue) => String(issue.issue_number).includes('2026'))) {
     issues.unshift({
+      id: '20260000-0000-4000-8000-000000000001',
       issue_number: '2026 年刊',
       title: '东南风文学社三十五周年年刊',
       description: '收录卷首语、影像辑录、书单、小说、散文、诗歌与社史，共 35 篇独立内容。',
@@ -202,7 +204,10 @@ async function loadMagazines() {
       <p class="card-meta">${new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long' }).format(new Date(issue.published_at))}</p>
       <h3>${escapeHtml(issue.title)}</h3>
       <p>${escapeHtml(issue.description || '本期社刊')}</p>
-      ${issue.source_url ? `<a class="file-link" href="${escapeHtml(issue.source_url)}" data-reader-url="${escapeHtml(issue.source_url)}" data-reader-title="${escapeHtml(issue.title)}" data-reader-mime="application/pdf">站内阅读 ↗</a>` : issue.file_path ? `<button class="file-link" type="button" data-file-bucket="magazines" data-file-path="${escapeHtml(issue.file_path)}" data-file-mime="application/pdf" data-reader-title="${escapeHtml(issue.title)}">站内阅读 ↗</button>` : '<button class="file-link" type="button" disabled>电子版整理中</button>'}
+      <div class="card-actions">
+        ${issue.source_url ? `<a class="file-link" href="${escapeHtml(issue.source_url)}" data-reader-url="${escapeHtml(issue.source_url)}" data-reader-title="${escapeHtml(issue.title)}" data-reader-mime="application/pdf">站内阅读 ↗</a>` : issue.file_path ? `<button class="file-link" type="button" data-file-bucket="magazines" data-file-path="${escapeHtml(issue.file_path)}" data-file-mime="application/pdf" data-reader-title="${escapeHtml(issue.title)}">站内阅读 ↗</button>` : '<button class="file-link" type="button" disabled>电子版整理中</button>'}
+        <button class="file-link" type="button" data-feedback-type="magazine" data-feedback-id="${escapeHtml(issue.id)}" data-feedback-title="${escapeHtml(issue.title)}">点评与评分 ☆</button>
+      </div>
     </div>
   </article>`).join('');
 }
@@ -238,7 +243,7 @@ function renderIssueArticles() {
 async function loadCreations() {
   const { data, error } = await supabase
     .from('creations')
-    .select('id,title,summary,category,publish_anonymously,public_author,file_path,file_name,file_size,published_at')
+    .select('id,title,summary,category,publish_anonymously,public_author,file_path,file_name,mime_type,file_size,published_at')
     .eq('status', 'published')
     .order('published_at', { ascending: false });
   if (error) throw error;
@@ -255,7 +260,10 @@ async function loadCreations() {
       <h3>${escapeHtml(creation.title)}</h3>
       <p>${escapeHtml(creation.summary || '作者没有留下简介。')}</p>
       <div class="creation-file">${escapeHtml(creation.file_name)} · ${formatFileSize(creation.file_size)}</div>
-      <button class="file-link" type="button" data-file-bucket="creations" data-file-path="${escapeHtml(creation.file_path)}" data-file-mime="${escapeHtml(creation.mime_type || '')}" data-reader-title="${escapeHtml(creation.title)}">站内阅读 ↗</button>
+      <div class="card-actions">
+        <button class="file-link" type="button" data-file-bucket="creations" data-file-path="${escapeHtml(creation.file_path)}" data-file-mime="${escapeHtml(creation.mime_type || '')}" data-reader-title="${escapeHtml(creation.title)}">站内阅读 ↗</button>
+        <button class="file-link" type="button" data-feedback-type="creation" data-feedback-id="${escapeHtml(creation.id)}" data-feedback-title="${escapeHtml(creation.title)}">点评与评分 ☆</button>
+      </div>
     </article>`;
   }).join('');
 }
@@ -263,6 +271,43 @@ async function loadCreations() {
 function formatFileSize(bytes) {
   const size = Number(bytes);
   return size >= 1048576 ? `${(size / 1048576).toFixed(1)} MB` : `${Math.ceil(size / 1024)} KB`;
+}
+
+async function refreshFeedback() {
+  if (!activeFeedback) return;
+  const { type, id } = activeFeedback;
+  const [commentResult, ratingResult] = await Promise.all([
+    supabase.from('content_comments').select('id,display_name,body,created_at').eq('target_type', type).eq('target_id', id).order('created_at', { ascending: false }),
+    supabase.from('content_ratings').select('user_id,score').eq('target_type', type).eq('target_id', id)
+  ]);
+  if (commentResult.error) throw commentResult.error;
+  if (ratingResult.error) throw ratingResult.error;
+
+  const comments = commentResult.data || [];
+  const ratings = ratingResult.data || [];
+  const average = ratings.length ? ratings.reduce((sum, rating) => sum + rating.score, 0) / ratings.length : 0;
+  const userRating = ratings.find((rating) => rating.user_id === currentUser?.id)?.score || 0;
+  $('#feedback-average').textContent = ratings.length ? average.toFixed(1) : '—';
+  $('#feedback-rating-count').textContent = ratings.length ? `${ratings.length} 人评分` : '暂无评分';
+  $('#feedback-stars').innerHTML = [1, 2, 3, 4, 5].map((score) => `<button class="star ${score <= userRating ? 'selected' : ''}" type="button" data-feedback-score="${score}" aria-label="评 ${score} 星" aria-pressed="${score === userRating}">★</button>`).join('');
+  $('#feedback-comment-count').textContent = `${comments.length} 条`;
+  $('#feedback-comment-list').innerHTML = comments.length ? comments.map((comment) => `<article class="comment"><header><strong>${escapeHtml(comment.display_name)}</strong><time>${new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium' }).format(new Date(comment.created_at))}</time></header><p>${escapeHtml(comment.body)}</p></article>`).join('') : '<p class="comment-empty">还没有点评，来写下第一条阅读感受吧。</p>';
+  $('#feedback-access-note').textContent = isRegisteredUser() ? `将以账号名“${memberProfile?.username || '社员'}”发表。` : '注册或登录后可评分和发表点评。';
+}
+
+async function openFeedback(type, id, title) {
+  activeFeedback = { type, id, title };
+  $('#feedback-kind').textContent = type === 'magazine' ? '社刊点评' : '成员作品点评';
+  $('#feedback-title').textContent = title;
+  $('#feedback-average').textContent = '—';
+  $('#feedback-rating-count').textContent = '正在读取评分…';
+  $('#feedback-stars').replaceChildren();
+  $('#feedback-comment-count').textContent = '…';
+  $('#feedback-comment-list').innerHTML = '<p class="comment-empty">正在读取点评…</p>';
+  $('#feedback-form').reset();
+  const dialog = $('#feedback-dialog');
+  if (!dialog.open) dialog.showModal();
+  await refreshFeedback();
 }
 
 async function openPrivateFile(button) {
@@ -280,6 +325,39 @@ function loadExternalScript(src, globalName) {
     script.addEventListener('error', () => reject(new Error(`${globalName} 加载失败。`)), { once: true });
     if (!existing) document.head.append(script);
   });
+}
+
+async function convertDocxToPdf(file) {
+  showToast('正在将 Word 转换为 PDF，请稍候…', 'info', 0);
+  const [mammoth, DOMPurify, html2pdf] = await Promise.all([
+    loadExternalScript('https://cdn.jsdelivr.net/npm/mammoth@1.10.0/mammoth.browser.min.js', 'mammoth'),
+    loadExternalScript('https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js', 'DOMPurify'),
+    loadExternalScript('https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.2/dist/html2pdf.bundle.min.js', 'html2pdf')
+  ]);
+  const result = await mammoth.convertToHtml({ arrayBuffer: await file.arrayBuffer() });
+  const page = document.createElement('article');
+  page.className = 'docx-pdf-source';
+  page.innerHTML = DOMPurify.sanitize(result.value);
+  Object.assign(page.style, {
+    width: '760px', padding: '56px',
+    color: '#172b3a', background: '#ffffff', fontFamily: 'serif', fontSize: '16px', lineHeight: '1.8'
+  });
+  page.setAttribute('aria-hidden', 'true');
+  page.querySelectorAll('img').forEach((image) => { image.style.maxWidth = '100%'; image.style.height = 'auto'; });
+  document.body.append(page);
+  try {
+    const blob = await html2pdf().set({
+      margin: [16, 16, 16, 16],
+      image: { type: 'jpeg', quality: 0.96 },
+      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      pagebreak: { mode: ['css', 'legacy'] }
+    }).from(page).outputPdf('blob');
+    const baseName = file.name.replace(/\.[^.]+$/, '') || '成员作品';
+    return new File([blob], `${baseName}.pdf`, { type: 'application/pdf', lastModified: Date.now() });
+  } finally {
+    page.remove();
+  }
 }
 
 async function loadPdfModule() {
@@ -603,6 +681,12 @@ $('#logout-button').addEventListener('click', (event) => withBusy(event.currentT
 }));
 
 document.addEventListener('click', (event) => {
+  const feedbackButton = event.target.closest('[data-feedback-type]');
+  if (feedbackButton) {
+    openFeedback(feedbackButton.dataset.feedbackType, feedbackButton.dataset.feedbackId, feedbackButton.dataset.feedbackTitle)
+      .catch((error) => showToast(readableError(error), 'error', 6000));
+    return;
+  }
   const readerLink = event.target.closest('[data-reader-url]');
   if (readerLink) {
     event.preventDefault();
@@ -619,6 +703,43 @@ document.addEventListener('click', (event) => {
   const button = event.target.closest('[data-file-bucket]');
   if (!button) return;
   withBusy(button, () => openPrivateFile(button));
+});
+
+$('#feedback-stars').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-feedback-score]');
+  if (!button || !activeFeedback || !requireRegistered()) return;
+  withBusy(button, async () => {
+    const { error } = await supabase.from('content_ratings').upsert({
+      target_type: activeFeedback.type,
+      target_id: activeFeedback.id,
+      user_id: currentUser.id,
+      score: Number(button.dataset.feedbackScore)
+    }, { onConflict: 'target_type,target_id,user_id' });
+    if (error) throw error;
+    await refreshFeedback();
+    showToast('评分已保存', 'success');
+  });
+});
+
+$('#feedback-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  if (!activeFeedback || !requireRegistered()) return;
+  const submit = event.currentTarget.querySelector('[type="submit"]');
+  withBusy(submit, async () => {
+    const body = $('#feedback-text').value.trim();
+    if (!body) throw new Error('请先写下点评内容。');
+    const { error } = await supabase.from('content_comments').insert({
+      target_type: activeFeedback.type,
+      target_id: activeFeedback.id,
+      author_id: currentUser.id,
+      display_name: memberProfile?.username || '社员',
+      body
+    });
+    if (error) throw error;
+    event.currentTarget.reset();
+    await refreshFeedback();
+    showToast('点评已发表', 'success');
+  });
 });
 
 $('#catalog-search').addEventListener('input', renderCatalog);
@@ -720,18 +841,20 @@ $('#creation-form').addEventListener('submit', (event) => {
   const submit = event.currentTarget.querySelector('[type="submit"]');
   withBusy(submit, async () => {
     const form = new FormData(event.currentTarget);
-    const file = form.get('file');
-    const allowed = new Set([
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    ]);
-    if (!(file instanceof File) || !allowed.has(file.type)) throw new Error('只支持 PDF、DOC 或 DOCX 文件。');
-    if (file.size > 15728640) throw new Error('文件不能超过 15 MB。');
-    const extension = file.name.split('.').pop().toLowerCase();
-    const filePath = `${currentUser.id}/${crypto.randomUUID()}.${extension}`;
+    const sourceFile = form.get('file');
+    if (!(sourceFile instanceof File)) throw new Error('请选择作品文件。');
+    if (sourceFile.size > 15728640) throw new Error('文件不能超过 15 MB。');
+    const lowerName = sourceFile.name.toLowerCase();
+    if (lowerName.endsWith('.doc')) throw new Error('旧版 DOC 无法稳定转换，请先在 Word 中另存为 DOCX。');
+    const isPdf = sourceFile.type === 'application/pdf' || lowerName.endsWith('.pdf');
+    const isDocx = sourceFile.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || lowerName.endsWith('.docx');
+    if (!isPdf && !isDocx) throw new Error('只支持 PDF 或 DOCX 文件。');
+    const file = isDocx ? await convertDocxToPdf(sourceFile) : sourceFile;
+    if (file.size > 15728640) throw new Error('转换后的 PDF 超过 15 MB，请压缩图片后重试。');
+    const filePath = `${currentUser.id}/${crypto.randomUUID()}.pdf`;
+    showToast('正在上传 PDF…', 'info', 0);
     const { error: uploadError } = await supabase.storage.from('creations').upload(filePath, file, {
-      contentType: file.type,
+      contentType: 'application/pdf',
       upsert: false
     });
     if (uploadError) throw uploadError;
@@ -743,7 +866,7 @@ $('#creation-form').addEventListener('submit', (event) => {
       publish_anonymously: form.get('publish_anonymously') === 'on',
       file_path: filePath,
       file_name: file.name,
-      mime_type: file.type,
+      mime_type: 'application/pdf',
       file_size: file.size,
       status: 'published',
       published_at: new Date().toISOString()
@@ -860,6 +983,11 @@ $('#reader-dialog').addEventListener('close', () => {
   $('#reader-open-original').href = '#';
 });
 
+$('#feedback-dialog').addEventListener('close', () => {
+  activeFeedback = null;
+  $('#feedback-form').reset();
+});
+
 function subscribeToChanges() {
   supabase.channel('dongnanfeng-library')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'books' }, scheduleRefresh)
@@ -869,6 +997,12 @@ function subscribeToChanges() {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, () => loadEvents().catch((error) => console.error(error)))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'magazine_issues' }, () => loadMagazines().catch((error) => console.error(error)))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'creations' }, () => loadCreations().catch((error) => console.error(error)))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'content_comments' }, () => {
+      if (activeFeedback) refreshFeedback().catch((error) => console.error(error));
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'content_ratings' }, () => {
+      if (activeFeedback) refreshFeedback().catch((error) => console.error(error));
+    })
     .subscribe();
 }
 

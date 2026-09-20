@@ -13,7 +13,8 @@
 - 自建书目：正式账号可创建，审核后公开
 - 社刊：展示历期刊物，PDF 可在站内阅读器直接翻阅
 - 2026 年刊：整刊阅读、35 篇分篇 PDF、文章/作者搜索与类型筛选
-- 社员创作：正式账号上传 PDF、DOC、DOCX，可实名或匿名发布；PDF 与 DOCX 支持站内阅读
+- 社刊与创作互动：正式账号可为整期社刊和成员作品进行五星评分、发表评论
+- 社员创作：正式账号上传 PDF 或 DOCX，可实名或匿名发布；DOCX 会先在浏览器转为 PDF，云端统一保存 PDF
 - 账号：用户名和密码注册、登录、退出；账号名用于实名署名
 - 权限：未注册访客只读；正式账号才可评论、评分、投票、建书目和投稿
 - 实时同步：书目、互动、活动、社刊与创作变更通过 Supabase Realtime 更新
@@ -39,11 +40,13 @@
 | `magazine_issues` | 社刊期号、介绍和文件路径 | 已发布社刊 | Dashboard 管理员 |
 | `magazine_articles` | 社刊分篇目录、作者、分类和页码 | 已发布社刊的文章 | SQL 迁移维护 |
 | `creations` | 创作元数据、署名模式和文件路径 | 已发布作品 | 正式账号本人 |
+| `content_comments` | 社刊与成员作品点评 | 对应内容公开时可读 | 正式账号 |
+| `content_ratings` | 社刊与成员作品五星评分 | 对应内容公开时可读 | 正式账号，每项一条 |
 | `blog_profiles` / `blog_posts` / `blog_post_comments` | 预留博客数据 | 按各表 RLS | 按各表 RLS |
 
 私有 Storage Bucket：
 
-- `creations`：最大 15 MB；允许 PDF、DOC、DOCX。上传路径固定为 `{用户 UUID}/{随机 UUID}.{扩展名}`。
+- `creations`：最大 15 MB；新的上传只允许 PDF。上传路径固定为 `{用户 UUID}/{随机 UUID}.pdf`。
 - `magazines`：最大 50 MB；仅允许 PDF。管理员在 Dashboard 上传。
 
 数据库只保存文件元数据与私有路径，不保存永久公开下载地址。前端每次阅读或打开原文件时生成 5 分钟有效的签名链接。匿名发布时，数据库仍在受保护的 `creations.author_id` 中记录账号 UUID，以便版权、删除与后台管理；读者账号没有该列的读取权限，只能看到服务端生成的 `public_author`，匿名作品的该字段为空。
@@ -64,6 +67,7 @@
 3. `supabase/migrations/20260920_add_events.sql`
 4. `supabase/migrations/20260920_add_accounts_magazines_creations.sql`
 5. `supabase/migrations/20260920_add_2026_issue_articles.sql`
+6. `supabase/migrations/20260920_add_content_feedback_and_pdf_uploads.sql`
 
 最后一个迁移会创建账号资料、社刊、创作表和两个私有 Bucket，同时收紧现有书目互动的写权限。脚本使用 `if not exists` 和 `drop policy if exists`，方便维护时重新执行；但仍建议先备份生产数据。
 
@@ -113,7 +117,9 @@
 
 ## 创作发布与管理
 
-正式账号在网页点击“发布创作”，填写标题、类型、简介并上传文件。选择“匿名发布”后，前台显示“匿名作者”；未选择则显示 `member_profiles.username`。
+正式账号在网页点击“发布创作”，填写标题、类型、简介并上传 PDF 或 DOCX。选择“匿名发布”后，前台显示“匿名作者”；未选择则显示 `member_profiles.username`。
+
+DOCX 转换在用户浏览器内完成：Mammoth 读取文档内容，DOMPurify 清理生成的 HTML，html2pdf.js 将排版结果转换为 PDF；随后只把 PDF 上传到私有 `creations` Bucket，原 Word 文件不会发送或保存。旧版 `.doc` 不支持转换，需先在 Word 中另存为 `.docx`。复杂 Word 排版、页眉页脚和特殊字体可能与原文件略有差异，重要版式建议直接上传 PDF。
 
 管理员可在 Table Editor → `creations` 修改 `status`：
 
