@@ -1,25 +1,135 @@
 # 东南风文学社
 
-东南风文学社官方网站前端。静态页面位于 `dist/`，通过 GitHub Actions 部署到 GitHub Pages。
+东南风文学社官网，静态前端位于 `dist/`，数据、账号与私有文件由 Supabase 提供，通过 GitHub Actions 发布到 GitHub Pages。
 
-## 功能
+- 线上地址：<https://delta-1873.github.io/dongnanfeng/>
+- Supabase 项目：`cgkjtsuyjdkhcwhqygyx`
+- 部署配置：`.github/workflows/pages.yml`
 
-- 书目目录搜索、分类与排序
-- 封面和摘要预览
-- 评论、投票与五星评分
-- 自建书目和实时封面预览
-- Supabase 云端数据、匿名身份和实时同步
+## 当前功能
 
-## 数据库初始化
+- 书目目录：搜索、分类、排序、封面和摘要预览
+- 阅读互动：评论、投票、五星评分
+- 自建书目：正式账号可创建，审核后公开
+- 社刊：展示历期刊物并通过临时签名链接查阅私有 PDF
+- 社员创作：正式账号上传 PDF、DOC、DOCX，可实名或匿名发布
+- 账号：邮箱和密码注册、登录、退出；账号名用于实名署名
+- 权限：未注册访客只读；正式账号才可评论、评分、投票、建书目和投稿
+- 实时同步：书目、互动、活动、社刊与创作变更通过 Supabase Realtime 更新
 
-在 Supabase Dashboard 的 SQL Editor 中执行 [`supabase/schema.sql`](supabase/schema.sql)，然后再发布前端。公开连接配置位于 `dist/config.js`；不要把 Secret Key 或 `service_role` Key 放进仓库。
+## 安全模型
 
-后续迁移按文件名顺序执行。当前迁移 [`supabase/migrations/20260920_reset_catalog_and_add_blogs.sql`](supabase/migrations/20260920_reset_catalog_and_add_blogs.sql) 会清空测试互动、把评分归零、扩充书目并创建匿名用户博客表。
+账号由 Supabase Auth 管理。用户在网页输入密码后，浏览器通过 HTTPS 直接提交给 Supabase Auth；Supabase 在服务端使用加盐 `bcrypt` 哈希保存。密码不会写入前端文件、`localStorage`、公共数据库表或本仓库。
 
-[`supabase/migrations/20260920_add_events.sql`](supabase/migrations/20260920_add_events.sql) 创建近期活动表；前端只读取已发布活动，空表显示“暂无”。
+不要在浏览器端先做固定哈希再把哈希当密码发送：固定哈希会成为可重放的“等效密码”，并不能替代 TLS 与服务端加盐哈希。
 
-本地预览：
+`dist/config.js` 只能保存公开的 Project URL 和 Publishable Key。严禁把 Secret Key、`service_role` Key、数据库密码或用户密码提交到 GitHub。
+
+网页会为普通访客建立 Supabase 匿名会话，以便通过 RLS 读取公开数据。数据库通过 JWT 的 `is_anonymous` 字段区分匿名访客和正式账号，所有写入策略均要求正式账号。因此，即使有人绕过网页按钮直接调用 API，匿名访客也无法写入。
+
+## 数据结构
+
+| 表 | 用途 | 公开读取 | 写入者 |
+| --- | --- | --- | --- |
+| `books` | 书目与摘要 | 已审核条目 | 正式账号创建，后台审核 |
+| `comments` | 书目评论 | 是 | 正式账号 |
+| `votes` | 书目投票 | 是 | 正式账号 |
+| `ratings` | 书目评分 | 是 | 正式账号 |
+| `events` | 近期活动 | 已发布活动 | Dashboard 管理员 |
+| `member_profiles` | 账号名与公开资料 | 是 | 注册触发器创建，本人更新 |
+| `magazine_issues` | 社刊期号、介绍和文件路径 | 已发布社刊 | Dashboard 管理员 |
+| `creations` | 创作元数据、署名模式和文件路径 | 已发布作品 | 正式账号本人 |
+| `blog_profiles` / `blog_posts` / `blog_post_comments` | 预留博客数据 | 按各表 RLS | 按各表 RLS |
+
+私有 Storage Bucket：
+
+- `creations`：最大 15 MB；允许 PDF、DOC、DOCX。上传路径固定为 `{用户 UUID}/{随机 UUID}.{扩展名}`。
+- `magazines`：最大 50 MB；仅允许 PDF。管理员在 Dashboard 上传。
+
+数据库只保存文件元数据与私有路径，不保存永久公开下载地址。前端每次下载生成 5 分钟有效的签名链接。匿名发布时，数据库仍在受保护的 `creations.author_id` 中记录账号 UUID，以便版权、删除与后台管理；读者账号没有该列的读取权限，只能看到服务端生成的 `public_author`，匿名作品的该字段为空。
+
+## 首次初始化与迁移
+
+在 Supabase Dashboard 的 SQL Editor 中按顺序执行：
+
+1. `supabase/schema.sql`
+2. `supabase/migrations/20260920_reset_catalog_and_add_blogs.sql`
+3. `supabase/migrations/20260920_add_events.sql`
+4. `supabase/migrations/20260920_add_accounts_magazines_creations.sql`
+
+最后一个迁移会创建账号资料、社刊、创作表和两个私有 Bucket，同时收紧现有书目互动的写权限。脚本使用 `if not exists` 和 `drop policy if exists`，方便维护时重新执行；但仍建议先备份生产数据。
+
+## Supabase Auth 设置
+
+在 Dashboard → Authentication 中：
+
+1. Providers → Email：开启邮箱密码注册。
+2. Providers → Anonymous：保持开启，供只读访客使用。
+3. URL Configuration：
+   - Site URL：`https://delta-1873.github.io/dongnanfeng/`
+   - Redirect URLs：加入 `https://delta-1873.github.io/dongnanfeng/`
+4. 若开启 Confirm email，注册后必须点击验证邮件才能登录；若关闭，注册后立即登录。
+
+生产环境建议开启邮箱验证。Supabase 默认邮件服务有发送速率限制，正式运营时应在 Authentication → Email 中配置自有 SMTP。
+
+## 如何发布社刊
+
+社刊只允许管理员通过 Dashboard 发布：
+
+1. Storage → `magazines` → 上传 PDF，例如 `2026/issue-24.pdf`。
+2. Table Editor → `magazine_issues` → Insert row。
+3. 填写：
+   - `issue_number`：如 `第 24 期`
+   - `title`：本期标题
+   - `description`：简介
+   - `file_path`：必须与 Bucket 内路径完全一致，如 `2026/issue-24.pdf`
+   - `is_published`：`true`
+   - `published_at`：发布时间
+4. 保存后网页会实时出现该期社刊。
+
+`cover_url` 是预留字段；当前网页使用自动生成的社刊封面，不依赖外部图片。
+
+## 创作发布与管理
+
+正式账号在网页点击“发布创作”，填写标题、类型、简介并上传文件。选择“匿名发布”后，前台显示“匿名作者”；未选择则显示 `member_profiles.username`。
+
+管理员可在 Table Editor → `creations` 修改 `status`：
+
+- `published`：公开可见
+- `hidden`：隐藏但保留文件和记录
+- `draft`：仅作者本人可读
+
+删除记录前应同时在 Storage → `creations` 删除对应 `file_path`，避免孤立文件。网页在数据库插入失败时会自动回滚刚上传的文件。
+
+账号名保存在 `member_profiles` 且忽略大小写唯一。不要直接编辑 `auth.users`；封禁或删除账号应使用 Authentication → Users。删除 Auth 用户会级联删除其资料和创作记录，但 Storage 对象不会自动级联，应先清理该用户 UUID 文件夹。
+
+## 本地开发
+
+不要直接双击 `dist/index.html`，请启动本地 HTTP 服务：
 
 ```bash
 python3 -m http.server 4173 --directory dist
 ```
+
+然后访问 <http://localhost:4173>。若本地测试注册邮件回跳，还需把 `http://localhost:4173/` 临时加入 Supabase Redirect URLs。
+
+主要文件：
+
+- `dist/index.html`：页面结构和表单
+- `dist/styles.css`：桌面与移动端样式
+- `dist/script.js`：Supabase 查询、账号与上传逻辑
+- `dist/config.js`：公开连接配置
+- `supabase/`：初始化 SQL 与增量迁移
+
+## 部署与维护
+
+推送 `main` 分支后，GitHub Actions 会把 `dist/` 发布到 GitHub Pages。可在 GitHub 仓库 Actions 页查看部署结果。
+
+维护时遵守以下规则：
+
+- 结构变更一律新增带日期的 SQL migration，不要只在 Dashboard 手改而不留记录。
+- 新表默认开启 RLS；先写最小权限策略，再向前端开放。
+- 不把私有 Bucket 改成 public；下载继续使用签名链接。
+- 文件类型与大小需同时在前端、数据库约束和 Bucket 配置中限制。
+- 上线前分别用匿名访客和正式账号测试读写权限。
+- 修改后检查桌面端、手机端、键盘操作和对话框关闭逻辑。

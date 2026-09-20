@@ -23,8 +23,10 @@
       </button>
       <nav class="site-nav" id="site-nav" aria-label="主导航">
         <a href="#library">书目</a>
+        <a href="#magazines">社刊</a>
+        <a href="#creations">创作</a>
         <a href="#events">近期活动</a>
-        <a class="nav-cta" href="#join">加入文学社</a>
+        <button class="nav-account" id="account-button" type="button">登录 / 注册</button>
       </nav>
     </header>
 
@@ -80,6 +82,33 @@
         <div class="empty-state" id="empty-state" hidden>
           <strong>没有找到相符的书目</strong>
           <span>换个关键词，或创建你的第一条记录。</span>
+        </div>
+      </section>
+
+      <section class="magazines section-pad" id="magazines" aria-labelledby="magazines-title">
+        <div class="section-heading reveal">
+          <div>
+            <p class="section-kicker">东南风社刊</p>
+            <h2 id="magazines-title">一期一会，纸上重逢</h2>
+          </div>
+          <p class="heading-note">在线查阅历期社刊，PDF 文件以私有存储和临时链接提供。</p>
+        </div>
+        <div class="magazine-grid" id="magazine-grid" aria-live="polite">
+          <div class="content-empty"><strong>暂无社刊</strong><p>新一期正在整理中。</p></div>
+        </div>
+      </section>
+
+      <section class="creations section-pad" id="creations" aria-labelledby="creations-title">
+        <div class="section-heading reveal">
+          <div>
+            <p class="section-kicker">社员创作</p>
+            <h2 id="creations-title">把作品交给风</h2>
+          </div>
+          <button class="button button-dark" id="open-creation" type="button">发布创作 <span aria-hidden="true">＋</span></button>
+        </div>
+        <p class="access-note" id="creation-access-note">登录正式账号后可上传 PDF 或 Word；访客可以浏览和下载已发布作品。</p>
+        <div class="creation-grid" id="creation-grid" aria-live="polite">
+          <div class="content-empty"><strong>暂无创作</strong><p>期待第一篇作品在这里出现。</p></div>
         </div>
       </section>
 
@@ -164,6 +193,60 @@
             <button class="button button-primary" type="submit">保存到目录 <span aria-hidden="true">→</span></button>
           </form>
         </div>
+      </dialog>
+
+      <dialog class="account-dialog" id="account-dialog" aria-labelledby="account-title">
+        <button class="dialog-close" type="button" data-close="account-dialog" aria-label="关闭账号窗口">×</button>
+        <div class="account-layout">
+          <div class="account-intro">
+            <p class="section-kicker">东南风通行证</p>
+            <h2 id="account-title">登录后，<br />让文字留下名字。</h2>
+            <p>正式账号可以评论、评分、新建书目并上传创作。发布时可选择公开账号名，也可对读者匿名。</p>
+          </div>
+          <div class="account-panel">
+            <div id="account-guest-panel">
+              <div class="account-tabs" role="tablist" aria-label="账号操作">
+                <button class="account-tab active" type="button" data-account-tab="login" role="tab" aria-selected="true">登录</button>
+                <button class="account-tab" type="button" data-account-tab="register" role="tab" aria-selected="false">注册</button>
+              </div>
+              <form class="account-form" id="login-form">
+                <label>邮箱<input name="email" type="email" autocomplete="email" required /></label>
+                <label>密码<input name="password" type="password" minlength="8" autocomplete="current-password" required /></label>
+                <button class="button button-primary" type="submit">登录 <span aria-hidden="true">→</span></button>
+              </form>
+              <form class="account-form" id="register-form" hidden>
+                <label>账号名<input name="username" minlength="2" maxlength="24" autocomplete="username" required /></label>
+                <label>邮箱<input name="email" type="email" autocomplete="email" required /></label>
+                <label>密码<input name="password" type="password" minlength="8" autocomplete="new-password" required /></label>
+                <p class="form-help">至少 8 位。密码只经 HTTPS 交给 Supabase Auth，在服务端加盐哈希保存。</p>
+                <button class="button button-primary" type="submit">创建账号 <span aria-hidden="true">→</span></button>
+              </form>
+            </div>
+            <div class="account-signed" id="account-signed-panel" hidden>
+              <p class="account-label">当前账号</p>
+              <strong id="account-username">—</strong>
+              <p id="account-email"></p>
+              <button class="button button-dark" id="logout-button" type="button">退出登录</button>
+            </div>
+          </div>
+        </div>
+      </dialog>
+
+      <dialog class="creation-dialog" id="creation-dialog" aria-labelledby="creation-form-title">
+        <button class="dialog-close" type="button" data-close="creation-dialog" aria-label="关闭发布窗口">×</button>
+        <form class="creation-form" id="creation-form">
+          <p class="section-kicker">社员投稿</p>
+          <h2 id="creation-form-title">发布一篇创作</h2>
+          <div class="form-grid">
+            <label class="full">标题<input name="title" maxlength="80" required /></label>
+            <label>类型<select name="category" required><option>小说</option><option>诗歌</option><option>散文</option><option>评论</option><option>戏剧</option><option>其他</option></select></label>
+            <label>作品文件<input name="file" type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required /></label>
+            <label class="full">简介<textarea name="summary" maxlength="500" placeholder="简要介绍作品内容……"></textarea></label>
+            <label class="check-label full"><input name="publish_anonymously" type="checkbox" /> <span>匿名发布（读者看不到账号名，但数据库仍记录作者账号以便管理）</span></label>
+          </div>
+          <p class="storage-note">支持 PDF、DOC、DOCX，最大 15 MB。文件保存于私有存储，仅通过临时签名链接下载。</p>
+          <button class="button button-primary" type="submit">上传并发布 <span aria-hidden="true">↑</span></button>
+        </form>
       </dialog>
     </main>
 
