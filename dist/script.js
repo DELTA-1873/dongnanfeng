@@ -92,6 +92,39 @@ async function loadLibrary({ refreshDetail = false, quiet = false } = {}) {
   if (!quiet) showToast('已与云端同步', 'success');
 }
 
+async function loadEvents() {
+  const { data, error } = await supabase
+    .from('events')
+    .select('*')
+    .eq('is_published', true)
+    .order('starts_at', { ascending: true });
+  if (error) throw error;
+  renderEvents(data);
+}
+
+function renderEvents(events) {
+  const grid = $('#event-grid');
+  if (!events?.length) {
+    grid.innerHTML = '<div class="events-empty"><strong>暂无</strong><p>近期活动正在筹备中，欢迎关注后续更新。</p></div>';
+    return;
+  }
+  grid.innerHTML = events.map((event) => {
+    const startsAt = new Date(event.starts_at);
+    const day = new Intl.DateTimeFormat('zh-CN', { day: '2-digit' }).format(startsAt);
+    const month = new Intl.DateTimeFormat('en-US', { month: 'short' }).format(startsAt).toUpperCase();
+    const dateTime = new Intl.DateTimeFormat('zh-CN', { weekday: 'short', hour: '2-digit', minute: '2-digit' }).format(startsAt);
+    return `<article class="event-card reveal visible">
+      <time datetime="${escapeHtml(event.starts_at)}"><strong>${day}</strong><span>${month}</span></time>
+      <div>
+        <p class="event-type">${escapeHtml(event.event_type)}</p>
+        <h3>${escapeHtml(event.title)}</h3>
+        <p>${escapeHtml(event.summary)}</p>
+        <span class="event-place">${escapeHtml(dateTime)}${event.location ? ` · ${escapeHtml(event.location)}` : ''}</span>
+      </div>
+    </article>`;
+  }).join('');
+}
+
 const ratingFor = (book) => {
   const liveSum = book.liveRatings.reduce((sum, item) => sum + item.score, 0);
   const count = book.baseRatings + book.liveRatings.length;
@@ -310,6 +343,7 @@ function subscribeToChanges() {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, scheduleRefresh)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'votes' }, scheduleRefresh)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'ratings' }, scheduleRefresh)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, () => loadEvents().catch((error) => console.error(error)))
     .subscribe();
 }
 
@@ -341,6 +375,10 @@ async function init() {
       currentUser = await ensureAnonymousUser();
       await loadLibrary();
     }
+    await loadEvents().catch((error) => {
+      console.error(error);
+      renderEvents([]);
+    });
     subscribeToChanges();
   } catch (error) {
     showToast(readableError(error), 'error', 0);

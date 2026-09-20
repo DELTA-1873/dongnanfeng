@@ -153,6 +153,9 @@ dialog::backdrop { background: rgba(5,24,39,.72); backdrop-filter: blur(4px); }
 .events { background: var(--white); }
 .heading-note { max-width: 18rem; margin: 0; color: #5c7181; }
 .event-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border: 1px solid var(--line); }
+.events-empty { grid-column: 1 / -1; display: grid; min-height: 270px; place-content: center; padding: 3rem 1.25rem; text-align: center; background: var(--white); }
+.events-empty strong { font-family: var(--serif); font-size: clamp(2.6rem, 5vw, 4.6rem); font-weight: 500; }
+.events-empty p { margin: .5rem 0 0; color: #71808a; }
 .event-card { display: grid; grid-template-columns: 95px 1fr; gap: 1.8rem; min-height: 310px; padding: clamp(1.7rem, 4vw, 3rem); background: var(--white); transition: background-color .25s ease; }
 .event-card:hover { background: #f2f5f5; }
 .event-card time { display: flex; flex-direction: column; align-items: flex-start; }

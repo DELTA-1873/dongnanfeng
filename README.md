@@ -16,6 +16,8 @@
 
 后续迁移按文件名顺序执行。当前迁移 [`supabase/migrations/20260920_reset_catalog_and_add_blogs.sql`](supabase/migrations/20260920_reset_catalog_and_add_blogs.sql) 会清空测试互动、把评分归零、扩充书目并创建匿名用户博客表。
 
+[`supabase/migrations/20260920_add_events.sql`](supabase/migrations/20260920_add_events.sql) 创建近期活动表；前端只读取已发布活动，空表显示“暂无”。
+
 本地预览：
 
 ```bash
