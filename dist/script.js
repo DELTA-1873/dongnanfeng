@@ -215,7 +215,14 @@ async function loadMagazines() {
 async function loadIssueArticles() {
   const response = await fetch('./magazines/2026/articles.json?v=20260920');
   if (!response.ok) throw new Error('2026 年刊文章目录加载失败。');
-  issueArticles = await response.json();
+  const staticArticles = await response.json();
+  const { data: databaseArticles, error } = await supabase
+    .from('magazine_articles')
+    .select('id,slug')
+    .order('sort_order', { ascending: true });
+  if (error) console.warn('社刊文章数据库目录暂不可用：', error.message);
+  const articleIds = new Map((databaseArticles || []).map((article) => [article.slug, article.id]));
+  issueArticles = staticArticles.map((article) => ({ ...article, id: articleIds.get(article.slug) || '' }));
   const categories = ['全部', ...new Set(issueArticles.map((article) => article.category))];
   $('#article-filters').innerHTML = categories.map((category) => `<button class="filter ${category === activeArticleFilter ? 'active' : ''}" type="button" data-article-filter="${escapeHtml(category)}" aria-pressed="${category === activeArticleFilter}">${escapeHtml(category)}</button>`).join('');
   renderIssueArticles();
@@ -235,7 +242,10 @@ function renderIssueArticles() {
       <h4>${escapeHtml(article.title)}</h4>
       <p>${escapeHtml(article.author)}</p>
       <p class="article-pages">${pages} · ${article.page_count} 页</p>
-      <a class="file-link" href="${escapeHtml(article.file)}" data-reader-url="${escapeHtml(article.file)}" data-reader-title="${escapeHtml(article.title)}" data-reader-mime="application/pdf">阅读全文 ↗</a>
+      <div class="card-actions">
+        <a class="file-link" href="${escapeHtml(article.file)}" data-reader-url="${escapeHtml(article.file)}" data-reader-title="${escapeHtml(article.title)}" data-reader-mime="application/pdf">阅读全文 ↗</a>
+        ${article.id ? `<button class="file-link" type="button" data-feedback-type="article" data-feedback-id="${escapeHtml(article.id)}" data-feedback-title="${escapeHtml(article.title)}">点评与评分 ☆</button>` : '<button class="file-link" type="button" disabled title="请先同步社刊文章数据库">点评待同步</button>'}
+      </div>
     </article>`;
   }).join('') : '<div class="content-empty"><strong>没有找到文章</strong><p>换个关键词或分类试试。</p></div>';
 }
@@ -297,7 +307,7 @@ async function refreshFeedback() {
 
 async function openFeedback(type, id, title) {
   activeFeedback = { type, id, title };
-  $('#feedback-kind').textContent = type === 'magazine' ? '社刊点评' : '成员作品点评';
+  $('#feedback-kind').textContent = type === 'magazine' ? '社刊点评' : type === 'article' ? '社刊文章点评' : '成员作品点评';
   $('#feedback-title').textContent = title;
   $('#feedback-average').textContent = '—';
   $('#feedback-rating-count').textContent = '正在读取评分…';

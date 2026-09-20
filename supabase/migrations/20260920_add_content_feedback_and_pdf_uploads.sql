@@ -1,11 +1,11 @@
--- 社刊 / 成员作品点评与评分，以及创作 Bucket 的 PDF-only 新上传规则。
+-- 社刊 / 社刊文章 / 成员作品点评与评分，以及创作 Bucket 的 PDF-only 新上传规则。
 -- 在 Supabase Dashboard > SQL Editor 中完整执行一次。
 
 begin;
 
 create table if not exists public.content_comments (
   id uuid primary key default gen_random_uuid(),
-  target_type text not null check (target_type in ('magazine', 'creation')),
+  target_type text not null check (target_type in ('magazine', 'article', 'creation')),
   target_id uuid not null,
   author_id uuid not null references auth.users(id) on delete cascade,
   display_name text not null default '社员' check (char_length(display_name) between 1 and 24),
@@ -14,7 +14,7 @@ create table if not exists public.content_comments (
 );
 
 create table if not exists public.content_ratings (
-  target_type text not null check (target_type in ('magazine', 'creation')),
+  target_type text not null check (target_type in ('magazine', 'article', 'creation')),
   target_id uuid not null,
   user_id uuid not null references auth.users(id) on delete cascade,
   score integer not null check (score between 1 and 5),
@@ -22,6 +22,15 @@ create table if not exists public.content_ratings (
   updated_at timestamptz not null default now(),
   primary key (target_type, target_id, user_id)
 );
+
+-- 兼容已经执行过旧版本迁移的项目。
+alter table public.content_comments drop constraint if exists content_comments_target_type_check;
+alter table public.content_comments add constraint content_comments_target_type_check
+check (target_type in ('magazine', 'article', 'creation'));
+
+alter table public.content_ratings drop constraint if exists content_ratings_target_type_check;
+alter table public.content_ratings add constraint content_ratings_target_type_check
+check (target_type in ('magazine', 'article', 'creation'));
 
 create index if not exists content_comments_target_idx
 on public.content_comments(target_type, target_id, created_at desc);
@@ -40,6 +49,12 @@ as $$
     when 'magazine' then exists (
       select 1 from public.magazine_issues
       where id = p_target_id and is_published = true
+    )
+    when 'article' then exists (
+      select 1
+      from public.magazine_articles article
+      join public.magazine_issues issue on issue.id = article.issue_id
+      where article.id = p_target_id and issue.is_published = true
     )
     when 'creation' then exists (
       select 1 from public.creations
@@ -111,6 +126,11 @@ drop trigger if exists creation_feedback_cleanup on public.creations;
 create trigger creation_feedback_cleanup
 after delete on public.creations
 for each row execute function public.delete_content_feedback('creation');
+
+drop trigger if exists article_feedback_cleanup on public.magazine_articles;
+create trigger article_feedback_cleanup
+after delete on public.magazine_articles
+for each row execute function public.delete_content_feedback('article');
 
 alter table public.content_comments enable row level security;
 alter table public.content_ratings enable row level security;
