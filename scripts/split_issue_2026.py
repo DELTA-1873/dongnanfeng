@@ -4,9 +4,8 @@
 from copy import copy
 from pathlib import Path
 import json
-import shutil
 
-from pypdf import PdfReader, PdfWriter, Transformation
+from pypdf import PdfReader, PdfWriter
 from pypdf.generic import RectangleObject
 
 
@@ -61,15 +60,49 @@ def printed_page(reader: PdfReader, number: int):
     width = float(page.mediabox.width)
     height = float(page.mediabox.height)
     half = width / 2
-    if number % 2:
-        page.add_transformation(Transformation().translate(tx=-half, ty=0))
-    box = RectangleObject([0, 0, half, height])
-    page.mediabox = box
-    page.cropbox = RectangleObject([0, 0, half, height])
-    page.trimbox = RectangleObject([0, 0, half, height])
-    page.bleedbox = RectangleObject([0, 0, half, height])
-    page.artbox = RectangleObject([0, 0, half, height])
+    left = half if number % 2 else 0
+    box = RectangleObject([left, 0, left + half, height])
+    page.mediabox = RectangleObject(box)
+    page.cropbox = RectangleObject(box)
+    page.trimbox = RectangleObject(box)
+    page.bleedbox = RectangleObject(box)
+    page.artbox = RectangleObject(box)
     return page
+
+
+def reader_page(source_page, side: str):
+    """Crop one half of a physical spread into an independent reader page."""
+    page = copy(source_page)
+    width = float(page.mediabox.width)
+    height = float(page.mediabox.height)
+    half = width / 2
+    left = half if side == "right" else 0
+    box = RectangleObject([left, 0, left + half, height])
+    page.mediabox = RectangleObject(box)
+    page.cropbox = RectangleObject(box)
+    page.trimbox = RectangleObject(box)
+    page.bleedbox = RectangleObject(box)
+    page.artbox = RectangleObject(box)
+    return page
+
+
+def write_reader_issue(reader: PdfReader, output: Path):
+    """Write the complete issue as true single pages for reliable browser reading."""
+    writer = PdfWriter()
+    for source_page in reader.pages:
+        width = float(source_page.mediabox.width)
+        height = float(source_page.mediabox.height)
+        if width > height * 1.15:
+            writer.add_page(reader_page(source_page, "left"))
+            writer.add_page(reader_page(source_page, "right"))
+        else:
+            writer.add_page(copy(source_page))
+    writer.add_metadata({
+        "/Title": "东南风文学社三十五周年年刊",
+        "/Subject": "东南风文学社 2026 年刊 - 单页阅读版",
+    })
+    with output.open("wb") as stream:
+        writer.write(stream)
 
 
 def main():
@@ -94,7 +127,7 @@ def main():
         record["file_size"] = output.stat().st_size
         metadata.append(record)
 
-    shutil.copy2(SOURCE, ISSUE_DIR / "dongnanfeng-2026.pdf")
+    write_reader_issue(reader, ISSUE_DIR / "dongnanfeng-2026.pdf")
     (ISSUE_DIR / "articles.json").write_text(
         json.dumps(metadata, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
