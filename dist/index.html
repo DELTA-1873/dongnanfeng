@@ -7,8 +7,8 @@
     <meta name="theme-color" content="#102a43" />
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23102a43'/%3E%3Cpath d='M13 42c13-3 20-12 25-28 2 11 7 18 15 22-10 0-18 4-26 13 2-8-2-9-14-7Z' fill='%23f6f1e7'/%3E%3Ccircle cx='49' cy='15' r='5' fill='%23d9472b'/%3E%3C/svg%3E" />
     <title>东南风文学社｜在山海之间写作</title>
-    <link rel="stylesheet" href="./styles.css?v=20260920-7" />
-    <script src="./script.js?v=20260920-7" type="module"></script>
+    <link rel="stylesheet" href="./styles.css?v=20260920-8" />
+    <script src="./script.js?v=20260920-8" type="module"></script>
   </head>
   <body>
     <a class="skip-link" href="#main">跳到正文</a>
@@ -275,9 +275,26 @@
           </div>
         </div>
         <div class="reader-body">
-          <p class="reader-status" id="reader-status">正在加载…</p>
-          <iframe id="reader-frame" title="PDF 阅读器" hidden></iframe>
-          <article class="reader-document" id="reader-document" hidden></article>
+          <nav class="reader-toolbar" id="reader-toolbar" aria-label="PDF 阅读控制" hidden>
+            <div class="reader-page-controls">
+              <button id="reader-prev" type="button" aria-label="上一页">←</button>
+              <span id="reader-page-label" aria-live="polite">第 1 / 1 页</span>
+              <button id="reader-next" type="button" aria-label="下一页">→</button>
+            </div>
+            <div class="reader-zoom-controls">
+              <button id="reader-zoom-out" type="button" aria-label="缩小">−</button>
+              <span id="reader-zoom-label">100%</span>
+              <button id="reader-zoom-in" type="button" aria-label="放大">＋</button>
+              <button id="reader-fit" type="button">适合宽度</button>
+            </div>
+          </nav>
+          <div class="reader-viewport" id="reader-viewport">
+            <p class="reader-status" id="reader-status">正在加载…</p>
+            <div class="reader-pdf-stage" id="reader-pdf-stage" hidden>
+              <canvas id="reader-canvas" aria-label="PDF 页面"></canvas>
+            </div>
+            <article class="reader-document" id="reader-document" hidden></article>
+          </div>
         </div>
       </dialog>
     </main>

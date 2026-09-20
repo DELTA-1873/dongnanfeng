@@ -11,6 +11,14 @@ let activeFilter = 'all';
 let issueArticles = [];
 let activeArticleFilter = '全部';
 let refreshTimer = null;
+let pdfModulePromise = null;
+let readerPdf = null;
+let readerLoadingTask = null;
+let readerRenderTask = null;
+let readerPageNumber = 1;
+let readerZoom = 1;
+let readerSession = 0;
+let readerResizeTimer = null;
 
 const $ = (selector, scope = document) => scope.querySelector(selector);
 const $$ = (selector, scope = document) => [...scope.querySelectorAll(selector)];
@@ -274,15 +282,96 @@ function loadExternalScript(src, globalName) {
   });
 }
 
+async function loadPdfModule() {
+  if (!pdfModulePromise) {
+    pdfModulePromise = import('https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs').then((pdfjs) => {
+      pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs';
+      return pdfjs;
+    });
+  }
+  return pdfModulePromise;
+}
+
+function updatePdfControls() {
+  if (!readerPdf) return;
+  $('#reader-page-label').textContent = `第 ${readerPageNumber} / ${readerPdf.numPages} 页`;
+  $('#reader-zoom-label').textContent = `${Math.round(readerZoom * 100)}%`;
+  $('#reader-prev').disabled = readerPageNumber <= 1;
+  $('#reader-next').disabled = readerPageNumber >= readerPdf.numPages;
+  $('#reader-zoom-out').disabled = readerZoom <= 0.5;
+  $('#reader-zoom-in').disabled = readerZoom >= 3;
+}
+
+async function renderPdfPage(session = readerSession) {
+  if (!readerPdf || session !== readerSession) return;
+  const viewportElement = $('#reader-viewport');
+  const stage = $('#reader-pdf-stage');
+  const canvas = $('#reader-canvas');
+  const status = $('#reader-status');
+  status.hidden = false;
+  status.textContent = `正在显示第 ${readerPageNumber} 页…`;
+  readerRenderTask?.cancel();
+
+  const page = await readerPdf.getPage(readerPageNumber);
+  if (session !== readerSession) return;
+  const naturalViewport = page.getViewport({ scale: 1 });
+  const availableWidth = Math.max(280, viewportElement.clientWidth - Math.min(80, viewportElement.clientWidth * 0.08));
+  const fitScale = availableWidth / naturalViewport.width;
+  const pageViewport = page.getViewport({ scale: fitScale * readerZoom });
+  const outputScale = Math.min(window.devicePixelRatio || 1, 2);
+  const context = canvas.getContext('2d', { alpha: false });
+  canvas.width = Math.floor(pageViewport.width * outputScale);
+  canvas.height = Math.floor(pageViewport.height * outputScale);
+  canvas.style.width = `${Math.floor(pageViewport.width)}px`;
+  canvas.style.height = `${Math.floor(pageViewport.height)}px`;
+  stage.hidden = false;
+
+  readerRenderTask = page.render({
+    canvasContext: context,
+    viewport: pageViewport,
+    transform: outputScale === 1 ? null : [outputScale, 0, 0, outputScale, 0, 0]
+  });
+  try {
+    await readerRenderTask.promise;
+    if (session !== readerSession) return;
+    status.hidden = true;
+    updatePdfControls();
+    viewportElement.scrollTo({ top: 0, left: Math.max(0, (stage.scrollWidth - viewportElement.clientWidth) / 2) });
+  } catch (error) {
+    if (error?.name !== 'RenderingCancelledException') throw error;
+  }
+}
+
+async function openPdf(url) {
+  const session = readerSession;
+  const pdfjs = await loadPdfModule();
+  if (session !== readerSession) return;
+  readerLoadingTask = pdfjs.getDocument({ url });
+  readerPdf = await readerLoadingTask.promise;
+  if (session !== readerSession) {
+    readerPdf.destroy();
+    return;
+  }
+  readerPageNumber = 1;
+  readerZoom = 1;
+  $('#reader-toolbar').hidden = false;
+  await renderPdfPage(session);
+}
+
 async function openReader(url, title, mimeType) {
   const dialog = $('#reader-dialog');
-  const frame = $('#reader-frame');
   const documentView = $('#reader-document');
   const status = $('#reader-status');
+  readerSession += 1;
+  readerRenderTask?.cancel();
+  readerLoadingTask?.destroy();
+  readerPdf?.destroy();
+  readerPdf = null;
+  readerLoadingTask = null;
   $('#reader-title').textContent = title || '作品阅读器';
   $('#reader-open-original').href = url;
-  frame.hidden = true;
-  frame.src = 'about:blank';
+  $('#reader-toolbar').hidden = true;
+  $('#reader-pdf-stage').hidden = true;
   documentView.hidden = true;
   documentView.replaceChildren();
   status.hidden = false;
@@ -290,9 +379,12 @@ async function openReader(url, title, mimeType) {
   if (!dialog.open) dialog.showModal();
 
   if (mimeType === 'application/pdf' || /\.pdf(?:$|[?#])/i.test(url)) {
-    frame.onload = () => { status.hidden = true; };
-    frame.src = url;
-    frame.hidden = false;
+    try {
+      await openPdf(url);
+    } catch (error) {
+      status.textContent = 'PDF 加载失败，请使用“新窗口打开”。';
+      console.error(error);
+    }
     return;
   }
 
@@ -708,11 +800,59 @@ $$('dialog').forEach((dialog) => dialog.addEventListener('click', (event) => {
   if (event.target === dialog) closeDialog(dialog);
 }));
 
+$('#reader-prev').addEventListener('click', () => {
+  if (!readerPdf || readerPageNumber <= 1) return;
+  readerPageNumber -= 1;
+  renderPdfPage().catch((error) => console.error(error));
+});
+
+$('#reader-next').addEventListener('click', () => {
+  if (!readerPdf || readerPageNumber >= readerPdf.numPages) return;
+  readerPageNumber += 1;
+  renderPdfPage().catch((error) => console.error(error));
+});
+
+$('#reader-zoom-out').addEventListener('click', () => {
+  readerZoom = Math.max(0.5, readerZoom - 0.25);
+  renderPdfPage().catch((error) => console.error(error));
+});
+
+$('#reader-zoom-in').addEventListener('click', () => {
+  readerZoom = Math.min(3, readerZoom + 0.25);
+  renderPdfPage().catch((error) => console.error(error));
+});
+
+$('#reader-fit').addEventListener('click', () => {
+  readerZoom = 1;
+  renderPdfPage().catch((error) => console.error(error));
+});
+
+document.addEventListener('keydown', (event) => {
+  if (!$('#reader-dialog').open || !readerPdf) return;
+  if (event.key === 'ArrowLeft') $('#reader-prev').click();
+  if (event.key === 'ArrowRight') $('#reader-next').click();
+});
+
+window.addEventListener('resize', () => {
+  clearTimeout(readerResizeTimer);
+  readerResizeTimer = setTimeout(() => {
+    if ($('#reader-dialog').open && readerPdf) renderPdfPage().catch((error) => console.error(error));
+  }, 180);
+});
+
 $('#reader-dialog').addEventListener('close', () => {
-  const frame = $('#reader-frame');
-  frame.onload = null;
-  frame.src = 'about:blank';
-  frame.hidden = true;
+  readerSession += 1;
+  readerRenderTask?.cancel();
+  readerLoadingTask?.destroy();
+  readerPdf?.destroy();
+  readerRenderTask = null;
+  readerLoadingTask = null;
+  readerPdf = null;
+  const canvas = $('#reader-canvas');
+  canvas.width = 0;
+  canvas.height = 0;
+  $('#reader-toolbar').hidden = true;
+  $('#reader-pdf-stage').hidden = true;
   $('#reader-document').replaceChildren();
   $('#reader-document').hidden = true;
   $('#reader-status').hidden = false;
