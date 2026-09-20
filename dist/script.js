@@ -3,6 +3,7 @@ import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 const COLORS = new Set(['blue', 'red', 'green', 'gold', 'black']);
+const ISSUE_ASSET_VERSION = '20260920-14';
 const ISSUE_IDS = {
   2026: '20260000-0000-4000-8000-000000000001',
   2025: '20250000-0000-4000-8000-000000000001'
@@ -44,6 +45,11 @@ const $ = (selector, scope = document) => scope.querySelector(selector);
 const $$ = (selector, scope = document) => [...scope.querySelectorAll(selector)];
 const escapeHtml = (value = '') => String(value).replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
 const safeColor = (color) => COLORS.has(color) ? color : 'blue';
+const versionedIssueAsset = (url = '') => {
+  const value = String(url);
+  if (!value || /^(?:https?:|blob:|data:)/i.test(value)) return value;
+  return `${value}${value.includes('?') ? '&' : '?'}v=${ISSUE_ASSET_VERSION}`;
+};
 const coverMarkup = (book) => `
   <span class="cover-series">东南风 · ${escapeHtml(book.genre)}</span>
   <span class="cover-title">${escapeHtml(book.title)}</span>
@@ -217,7 +223,7 @@ async function loadMagazines() {
       <h3>${escapeHtml(issue.title)}</h3>
       <p>${escapeHtml(issue.description || '本期社刊')}</p>
       <div class="card-actions">
-        ${issue.source_url ? `<a class="file-link" href="${escapeHtml(issue.source_url)}" data-reader-url="${escapeHtml(issue.source_url)}" data-reader-title="${escapeHtml(issue.title)}" data-reader-mime="application/pdf">站内阅读 ↗</a>` : issue.file_path ? `<button class="file-link" type="button" data-file-bucket="magazines" data-file-path="${escapeHtml(issue.file_path)}" data-file-mime="application/pdf" data-reader-title="${escapeHtml(issue.title)}">站内阅读 ↗</button>` : '<button class="file-link" type="button" disabled>电子版整理中</button>'}
+        ${issue.source_url ? `<a class="file-link" href="${escapeHtml(versionedIssueAsset(issue.source_url))}" data-reader-url="${escapeHtml(versionedIssueAsset(issue.source_url))}" data-reader-title="${escapeHtml(issue.title)}" data-reader-mime="application/pdf">站内阅读 ↗</a>` : issue.file_path ? `<button class="file-link" type="button" data-file-bucket="magazines" data-file-path="${escapeHtml(issue.file_path)}" data-file-mime="application/pdf" data-reader-title="${escapeHtml(issue.title)}">站内阅读 ↗</button>` : '<button class="file-link" type="button" disabled>电子版整理中</button>'}
         <button class="file-link" type="button" data-feedback-type="magazine" data-feedback-id="${escapeHtml(issue.id)}" data-feedback-title="${escapeHtml(issue.title)}">点评与评分 ☆</button>
       </div>
     </div>
@@ -269,7 +275,7 @@ function renderIssueArticles() {
       <p>${escapeHtml(article.author)}</p>
       <p class="article-pages">${pages} · ${article.page_count} 页</p>
       <div class="card-actions">
-        <a class="file-link" href="${escapeHtml(article.file)}" data-reader-url="${escapeHtml(article.file)}" data-reader-title="${escapeHtml(article.title)}" data-reader-mime="application/pdf">阅读全文 ↗</a>
+        <a class="file-link" href="${escapeHtml(versionedIssueAsset(article.file))}" data-reader-url="${escapeHtml(versionedIssueAsset(article.file))}" data-reader-title="${escapeHtml(article.title)}" data-reader-mime="application/pdf">阅读全文 ↗</a>
         ${article.id ? `<button class="file-link" type="button" data-feedback-type="article" data-feedback-id="${escapeHtml(article.id)}" data-feedback-title="${escapeHtml(article.title)}">点评与评分 ☆</button>` : '<button class="file-link" type="button" disabled title="请先同步社刊文章数据库">点评待同步</button>'}
       </div>
     </article>`;
