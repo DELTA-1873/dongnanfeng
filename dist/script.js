@@ -73,13 +73,20 @@ async function loadMemberProfile() {
 
 function refreshAccountUi() {
   const registered = isRegisteredUser();
-  $('#account-button').textContent = registered ? memberProfile?.username || '我的账号' : '登录 / 注册';
-  $('#account-guest-panel').hidden = registered;
-  $('#account-signed-panel').hidden = !registered;
-  $('#account-username').textContent = memberProfile?.username || '—';
-  $('#creation-access-note').textContent = registered
-    ? `当前以“${memberProfile?.username || '社员'}”登录，可实名或匿名发布作品。`
-    : '登录正式账号后可上传 PDF 或 Word；访客可以浏览和下载已发布作品。';
+  const accountButton = $('#account-button');
+  const guestPanel = $('#account-guest-panel');
+  const signedPanel = $('#account-signed-panel');
+  const accountUsername = $('#account-username');
+  const accessNote = $('#creation-access-note');
+  if (accountButton) accountButton.textContent = registered ? memberProfile?.username || '我的账号' : '登录 / 注册';
+  if (guestPanel) guestPanel.hidden = registered;
+  if (signedPanel) signedPanel.hidden = !registered;
+  if (accountUsername) accountUsername.textContent = memberProfile?.username || '—';
+  if (accessNote) {
+    accessNote.textContent = registered
+      ? `当前以“${memberProfile?.username || '社员'}”登录，可实名或匿名发布作品。`
+      : '登录正式账号后可上传 PDF 或 Word；访客可以浏览和下载已发布作品。';
+  }
 }
 
 async function loadLibrary({ refreshDetail = false, quiet = false } = {}) {
