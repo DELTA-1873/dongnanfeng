@@ -194,7 +194,7 @@ async function loadMagazines() {
       <p class="card-meta">${new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long' }).format(new Date(issue.published_at))}</p>
       <h3>${escapeHtml(issue.title)}</h3>
       <p>${escapeHtml(issue.description || '本期社刊')}</p>
-      ${issue.source_url ? `<a class="file-link" href="${escapeHtml(issue.source_url)}" target="_blank" rel="noopener">阅读整刊 ↗</a>` : issue.file_path ? `<button class="file-link" type="button" data-file-bucket="magazines" data-file-path="${escapeHtml(issue.file_path)}">查阅 PDF ↗</button>` : '<button class="file-link" type="button" disabled>电子版整理中</button>'}
+      ${issue.source_url ? `<a class="file-link" href="${escapeHtml(issue.source_url)}" data-reader-url="${escapeHtml(issue.source_url)}" data-reader-title="${escapeHtml(issue.title)}" data-reader-mime="application/pdf">站内阅读 ↗</a>` : issue.file_path ? `<button class="file-link" type="button" data-file-bucket="magazines" data-file-path="${escapeHtml(issue.file_path)}" data-file-mime="application/pdf" data-reader-title="${escapeHtml(issue.title)}">站内阅读 ↗</button>` : '<button class="file-link" type="button" disabled>电子版整理中</button>'}
     </div>
   </article>`).join('');
 }
@@ -222,7 +222,7 @@ function renderIssueArticles() {
       <h4>${escapeHtml(article.title)}</h4>
       <p>${escapeHtml(article.author)}</p>
       <p class="article-pages">${pages} · ${article.page_count} 页</p>
-      <a class="file-link" href="${escapeHtml(article.file)}" target="_blank" rel="noopener">阅读全文 ↗</a>
+      <a class="file-link" href="${escapeHtml(article.file)}" data-reader-url="${escapeHtml(article.file)}" data-reader-title="${escapeHtml(article.title)}" data-reader-mime="application/pdf">阅读全文 ↗</a>
     </article>`;
   }).join('') : '<div class="content-empty"><strong>没有找到文章</strong><p>换个关键词或分类试试。</p></div>';
 }
@@ -247,7 +247,7 @@ async function loadCreations() {
       <h3>${escapeHtml(creation.title)}</h3>
       <p>${escapeHtml(creation.summary || '作者没有留下简介。')}</p>
       <div class="creation-file">${escapeHtml(creation.file_name)} · ${formatFileSize(creation.file_size)}</div>
-      <button class="file-link" type="button" data-file-bucket="creations" data-file-path="${escapeHtml(creation.file_path)}">打开作品 ↗</button>
+      <button class="file-link" type="button" data-file-bucket="creations" data-file-path="${escapeHtml(creation.file_path)}" data-file-mime="${escapeHtml(creation.mime_type || '')}" data-reader-title="${escapeHtml(creation.title)}">站内阅读 ↗</button>
     </article>`;
   }).join('');
 }
@@ -260,7 +260,63 @@ function formatFileSize(bytes) {
 async function openPrivateFile(button) {
   const { data, error } = await supabase.storage.from(button.dataset.fileBucket).createSignedUrl(button.dataset.filePath, 300);
   if (error) throw error;
-  window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+  await openReader(data.signedUrl, button.dataset.readerTitle || '作品阅读器', button.dataset.fileMime || 'application/pdf');
+}
+
+function loadExternalScript(src, globalName) {
+  if (window[globalName]) return Promise.resolve(window[globalName]);
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${src}"]`);
+    const script = existing || Object.assign(document.createElement('script'), { src, defer: true });
+    script.addEventListener('load', () => resolve(window[globalName]), { once: true });
+    script.addEventListener('error', () => reject(new Error(`${globalName} 加载失败。`)), { once: true });
+    if (!existing) document.head.append(script);
+  });
+}
+
+async function openReader(url, title, mimeType) {
+  const dialog = $('#reader-dialog');
+  const frame = $('#reader-frame');
+  const documentView = $('#reader-document');
+  const status = $('#reader-status');
+  $('#reader-title').textContent = title || '作品阅读器';
+  $('#reader-open-original').href = url;
+  frame.hidden = true;
+  frame.src = 'about:blank';
+  documentView.hidden = true;
+  documentView.replaceChildren();
+  status.hidden = false;
+  status.textContent = '正在加载…';
+  if (!dialog.open) dialog.showModal();
+
+  if (mimeType === 'application/pdf' || /\.pdf(?:$|[?#])/i.test(url)) {
+    frame.onload = () => { status.hidden = true; };
+    frame.src = url;
+    frame.hidden = false;
+    return;
+  }
+
+  if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || /\.docx(?:$|[?#])/i.test(url)) {
+    try {
+      const [mammoth, DOMPurify] = await Promise.all([
+        loadExternalScript('https://cdn.jsdelivr.net/npm/mammoth@1.10.0/mammoth.browser.min.js', 'mammoth'),
+        loadExternalScript('https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js', 'DOMPurify')
+      ]);
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('Word 文件读取失败。');
+      const arrayBuffer = await response.arrayBuffer();
+      const result = await mammoth.convertToHtml({ arrayBuffer });
+      documentView.innerHTML = DOMPurify.sanitize(result.value);
+      documentView.hidden = false;
+      status.hidden = true;
+    } catch (error) {
+      status.textContent = '浏览器暂时无法预览这个 Word 文件，请使用“新窗口打开”。';
+      console.error(error);
+    }
+    return;
+  }
+
+  status.textContent = '旧版 DOC 文件暂不支持站内预览，请使用“新窗口打开”。';
 }
 
 const ratingFor = (book) => {
@@ -455,6 +511,19 @@ $('#logout-button').addEventListener('click', (event) => withBusy(event.currentT
 }));
 
 document.addEventListener('click', (event) => {
+  const readerLink = event.target.closest('[data-reader-url]');
+  if (readerLink) {
+    event.preventDefault();
+    openReader(
+      readerLink.dataset.readerUrl,
+      readerLink.dataset.readerTitle || '作品阅读器',
+      readerLink.dataset.readerMime || 'application/pdf'
+    ).catch((error) => {
+      console.error(error);
+      showToast('阅读器打开失败，请使用“新窗口打开”。', 'error', 5000);
+    });
+    return;
+  }
   const button = event.target.closest('[data-file-bucket]');
   if (!button) return;
   withBusy(button, () => openPrivateFile(button));
@@ -638,6 +707,18 @@ $$('[data-close]').forEach((button) => button.addEventListener('click', () => cl
 $$('dialog').forEach((dialog) => dialog.addEventListener('click', (event) => {
   if (event.target === dialog) closeDialog(dialog);
 }));
+
+$('#reader-dialog').addEventListener('close', () => {
+  const frame = $('#reader-frame');
+  frame.onload = null;
+  frame.src = 'about:blank';
+  frame.hidden = true;
+  $('#reader-document').replaceChildren();
+  $('#reader-document').hidden = true;
+  $('#reader-status').hidden = false;
+  $('#reader-status').textContent = '正在加载…';
+  $('#reader-open-original').href = '#';
+});
 
 function subscribeToChanges() {
   supabase.channel('dongnanfeng-library')

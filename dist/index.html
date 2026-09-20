@@ -7,8 +7,8 @@
     <meta name="theme-color" content="#102a43" />
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23102a43'/%3E%3Cpath d='M13 42c13-3 20-12 25-28 2 11 7 18 15 22-10 0-18 4-26 13 2-8-2-9-14-7Z' fill='%23f6f1e7'/%3E%3Ccircle cx='49' cy='15' r='5' fill='%23d9472b'/%3E%3C/svg%3E" />
     <title>东南风文学社｜在山海之间写作</title>
-    <link rel="stylesheet" href="./styles.css?v=20260920-6" />
-    <script src="./script.js?v=20260920-6" type="module"></script>
+    <link rel="stylesheet" href="./styles.css?v=20260920-7" />
+    <script src="./script.js?v=20260920-7" type="module"></script>
   </head>
   <body>
     <a class="skip-link" href="#main">跳到正文</a>
@@ -258,9 +258,27 @@
             <label class="full">简介<textarea name="summary" maxlength="500" placeholder="简要介绍作品内容……"></textarea></label>
             <label class="check-label full"><input name="publish_anonymously" type="checkbox" /> <span>匿名发布（读者看不到账号名，但数据库仍记录作者账号以便管理）</span></label>
           </div>
-          <p class="storage-note">支持 PDF、DOC、DOCX，最大 15 MB。文件保存于私有存储，仅通过临时签名链接下载。</p>
+          <p class="storage-note">支持 PDF、DOC、DOCX，最大 15 MB。PDF 与 DOCX 可站内阅读，并可通过临时签名链接打开原文件。</p>
           <button class="button button-primary" type="submit">上传并发布 <span aria-hidden="true">↑</span></button>
         </form>
+      </dialog>
+
+      <dialog class="reader-dialog" id="reader-dialog" aria-labelledby="reader-title">
+        <div class="reader-header">
+          <div>
+            <p class="section-kicker">站内阅读</p>
+            <h2 id="reader-title">作品阅读器</h2>
+          </div>
+          <div class="reader-actions">
+            <a id="reader-open-original" href="#" target="_blank" rel="noopener">新窗口打开 ↗</a>
+            <button class="dialog-close reader-close" type="button" data-close="reader-dialog" aria-label="关闭阅读器">×</button>
+          </div>
+        </div>
+        <div class="reader-body">
+          <p class="reader-status" id="reader-status">正在加载…</p>
+          <iframe id="reader-frame" title="PDF 阅读器" hidden></iframe>
+          <article class="reader-document" id="reader-document" hidden></article>
+        </div>
       </dialog>
     </main>
 
