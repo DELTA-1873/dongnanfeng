@@ -34,6 +34,8 @@ let readerPdf = null;
 let readerLoadingTask = null;
 let readerRenderTask = null;
 let readerPageNumber = 1;
+let readerPageMap = [];
+let readerRenderVersion = 0;
 let readerZoom = 1;
 let readerSession = 0;
 let readerResizeTimer = null;
@@ -215,7 +217,7 @@ async function loadMagazines() {
       <h3>${escapeHtml(issue.title)}</h3>
       <p>${escapeHtml(issue.description || '本期社刊')}</p>
       <div class="card-actions">
-        ${issue.source_url ? `<a class="file-link" href="${escapeHtml(issue.source_url)}" data-reader-url="${escapeHtml(issue.source_url)}" data-reader-title="${escapeHtml(issue.title)}" data-reader-mime="application/pdf">站内阅读 ↗</a>` : issue.file_path ? `<button class="file-link" type="button" data-file-bucket="magazines" data-file-path="${escapeHtml(issue.file_path)}" data-file-mime="application/pdf" data-reader-title="${escapeHtml(issue.title)}">站内阅读 ↗</button>` : '<button class="file-link" type="button" disabled>电子版整理中</button>'}
+        ${issue.source_url ? `<a class="file-link" href="${escapeHtml(issue.source_url)}" data-reader-url="${escapeHtml(issue.source_url)}" data-reader-title="${escapeHtml(issue.title)}" data-reader-mime="application/pdf" data-reader-split-spreads="true"${String(issue.issue_number).includes('2025') ? ' data-reader-whole-landscape-pages="3"' : ''}>站内阅读 ↗</a>` : issue.file_path ? `<button class="file-link" type="button" data-file-bucket="magazines" data-file-path="${escapeHtml(issue.file_path)}" data-file-mime="application/pdf" data-reader-title="${escapeHtml(issue.title)}" data-reader-split-spreads="true"${String(issue.issue_number).includes('2025') ? ' data-reader-whole-landscape-pages="3"' : ''}>站内阅读 ↗</button>` : '<button class="file-link" type="button" disabled>电子版整理中</button>'}
         <button class="file-link" type="button" data-feedback-type="magazine" data-feedback-id="${escapeHtml(issue.id)}" data-feedback-title="${escapeHtml(issue.title)}">点评与评分 ☆</button>
       </div>
     </div>
@@ -347,7 +349,10 @@ async function openFeedback(type, id, title) {
 async function openPrivateFile(button) {
   const { data, error } = await supabase.storage.from(button.dataset.fileBucket).createSignedUrl(button.dataset.filePath, 300);
   if (error) throw error;
-  await openReader(data.signedUrl, button.dataset.readerTitle || '作品阅读器', button.dataset.fileMime || 'application/pdf');
+  await openReader(data.signedUrl, button.dataset.readerTitle || '作品阅读器', button.dataset.fileMime || 'application/pdf', {
+    splitSpreads: button.dataset.readerSplitSpreads === 'true',
+    wholeLandscapePages: button.dataset.readerWholeLandscapePages
+  });
 }
 
 function loadExternalScript(src, globalName) {
@@ -406,46 +411,52 @@ async function loadPdfModule() {
 
 function updatePdfControls() {
   if (!readerPdf) return;
-  $('#reader-page-label').textContent = `第 ${readerPageNumber} / ${readerPdf.numPages} 页`;
+  $('#reader-page-label').textContent = `第 ${readerPageNumber} / ${readerPageMap.length || readerPdf.numPages} 页`;
   $('#reader-zoom-label').textContent = `${Math.round(readerZoom * 100)}%`;
   $('#reader-prev').disabled = readerPageNumber <= 1;
-  $('#reader-next').disabled = readerPageNumber >= readerPdf.numPages;
+  $('#reader-next').disabled = readerPageNumber >= (readerPageMap.length || readerPdf.numPages);
   $('#reader-zoom-out').disabled = readerZoom <= 0.5;
   $('#reader-zoom-in').disabled = readerZoom >= 3;
 }
 
 async function renderPdfPage(session = readerSession) {
   if (!readerPdf || session !== readerSession) return;
+  const renderVersion = ++readerRenderVersion;
+  const pageEntry = readerPageMap[readerPageNumber - 1] || { pdfPage: readerPageNumber, half: 'whole' };
+  const displayedPageNumber = readerPageNumber;
   const viewportElement = $('#reader-viewport');
   const stage = $('#reader-pdf-stage');
   const canvas = $('#reader-canvas');
   const status = $('#reader-status');
   status.hidden = false;
-  status.textContent = `正在显示第 ${readerPageNumber} 页…`;
+  status.textContent = `正在显示第 ${displayedPageNumber} 页…`;
   readerRenderTask?.cancel();
 
-  const page = await readerPdf.getPage(readerPageNumber);
-  if (session !== readerSession) return;
+  const page = await readerPdf.getPage(pageEntry.pdfPage);
+  if (session !== readerSession || renderVersion !== readerRenderVersion) return;
   const naturalViewport = page.getViewport({ scale: 1 });
   const availableWidth = Math.max(280, viewportElement.clientWidth - Math.min(80, viewportElement.clientWidth * 0.08));
-  const fitScale = availableWidth / naturalViewport.width;
+  const isHalfSpread = pageEntry.half !== 'whole';
+  const logicalWidth = isHalfSpread ? naturalViewport.width / 2 : naturalViewport.width;
+  const fitScale = availableWidth / logicalWidth;
   const pageViewport = page.getViewport({ scale: fitScale * readerZoom });
+  const renderedWidth = isHalfSpread ? pageViewport.width / 2 : pageViewport.width;
   const outputScale = Math.min(window.devicePixelRatio || 1, 2);
   const context = canvas.getContext('2d', { alpha: false });
-  canvas.width = Math.floor(pageViewport.width * outputScale);
+  canvas.width = Math.floor(renderedWidth * outputScale);
   canvas.height = Math.floor(pageViewport.height * outputScale);
-  canvas.style.width = `${Math.floor(pageViewport.width)}px`;
+  canvas.style.width = `${Math.floor(renderedWidth)}px`;
   canvas.style.height = `${Math.floor(pageViewport.height)}px`;
   stage.hidden = false;
 
   readerRenderTask = page.render({
     canvasContext: context,
     viewport: pageViewport,
-    transform: outputScale === 1 ? null : [outputScale, 0, 0, outputScale, 0, 0]
+    transform: [outputScale, 0, 0, outputScale, pageEntry.half === 'right' ? -renderedWidth * outputScale : 0, 0]
   });
   try {
     await readerRenderTask.promise;
-    if (session !== readerSession) return;
+    if (session !== readerSession || renderVersion !== readerRenderVersion) return;
     status.hidden = true;
     updatePdfControls();
     viewportElement.scrollTo({ top: 0, left: Math.max(0, (stage.scrollWidth - viewportElement.clientWidth) / 2) });
@@ -454,7 +465,21 @@ async function renderPdfPage(session = readerSession) {
   }
 }
 
-async function openPdf(url) {
+async function buildPdfPageMap(splitSpreads, wholeLandscapePages, session) {
+  const preservedPages = new Set(String(wholeLandscapePages || '').split(',').map(Number).filter(Number.isInteger));
+  const pageMap = [];
+  for (let pdfPage = 1; pdfPage <= readerPdf.numPages; pdfPage += 1) {
+    const page = await readerPdf.getPage(pdfPage);
+    if (session !== readerSession) return [];
+    const viewport = page.getViewport({ scale: 1 });
+    const isSpread = splitSpreads && viewport.width > viewport.height * 1.15 && !preservedPages.has(pdfPage);
+    if (isSpread) pageMap.push({ pdfPage, half: 'left' }, { pdfPage, half: 'right' });
+    else pageMap.push({ pdfPage, half: 'whole' });
+  }
+  return pageMap;
+}
+
+async function openPdf(url, options = {}) {
   const session = readerSession;
   const pdfjs = await loadPdfModule();
   if (session !== readerSession) return;
@@ -464,13 +489,16 @@ async function openPdf(url) {
     readerPdf.destroy();
     return;
   }
+  $('#reader-status').textContent = options.splitSpreads ? '正在整理跨页版式…' : '正在准备页面…';
+  readerPageMap = await buildPdfPageMap(options.splitSpreads, options.wholeLandscapePages, session);
+  if (session !== readerSession || !readerPageMap.length) return;
   readerPageNumber = 1;
   readerZoom = 1;
   $('#reader-toolbar').hidden = false;
   await renderPdfPage(session);
 }
 
-async function openReader(url, title, mimeType) {
+async function openReader(url, title, mimeType, options = {}) {
   const dialog = $('#reader-dialog');
   const documentView = $('#reader-document');
   const status = $('#reader-status');
@@ -479,6 +507,8 @@ async function openReader(url, title, mimeType) {
   readerLoadingTask?.destroy();
   readerPdf?.destroy();
   readerPdf = null;
+  readerPageMap = [];
+  readerRenderVersion += 1;
   readerLoadingTask = null;
   $('#reader-title').textContent = title || '作品阅读器';
   $('#reader-open-original').href = url;
@@ -492,7 +522,7 @@ async function openReader(url, title, mimeType) {
 
   if (mimeType === 'application/pdf' || /\.pdf(?:$|[?#])/i.test(url)) {
     try {
-      await openPdf(url);
+      await openPdf(url, options);
     } catch (error) {
       status.textContent = 'PDF 加载失败，请使用“新窗口打开”。';
       console.error(error);
@@ -727,7 +757,11 @@ document.addEventListener('click', (event) => {
     openReader(
       readerLink.dataset.readerUrl,
       readerLink.dataset.readerTitle || '作品阅读器',
-      readerLink.dataset.readerMime || 'application/pdf'
+      readerLink.dataset.readerMime || 'application/pdf',
+      {
+        splitSpreads: readerLink.dataset.readerSplitSpreads === 'true',
+        wholeLandscapePages: readerLink.dataset.readerWholeLandscapePages
+      }
     ).catch((error) => {
       console.error(error);
       showToast('阅读器打开失败，请使用“新窗口打开”。', 'error', 5000);
@@ -972,7 +1006,7 @@ $('#reader-prev').addEventListener('click', () => {
 });
 
 $('#reader-next').addEventListener('click', () => {
-  if (!readerPdf || readerPageNumber >= readerPdf.numPages) return;
+  if (!readerPdf || readerPageNumber >= (readerPageMap.length || readerPdf.numPages)) return;
   readerPageNumber += 1;
   renderPdfPage().catch((error) => console.error(error));
 });
@@ -1013,6 +1047,8 @@ $('#reader-dialog').addEventListener('close', () => {
   readerRenderTask = null;
   readerLoadingTask = null;
   readerPdf = null;
+  readerPageMap = [];
+  readerRenderVersion += 1;
   const canvas = $('#reader-canvas');
   canvas.width = 0;
   canvas.height = 0;
