@@ -205,7 +205,9 @@ dialog::backdrop { background: rgba(5,24,39,.72); backdrop-filter: blur(4px); }
 .events { background: var(--white); }
 .magazines { background: var(--white); }
 .creations { background: var(--paper); }
-.magazine-grid, .creation-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; border: 1px solid var(--line); background: var(--line); }
+.magazine-grid, .creation-grid { display: grid; gap: 1px; border: 1px solid var(--line); background: var(--line); }
+.magazine-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.creation-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .magazine-card, .creation-card { display: flex; min-width: 0; flex-direction: column; padding: clamp(1.4rem, 3vw, 2.4rem); background: var(--white); }
 .magazine-card:only-child { grid-column: 1 / -1; flex-direction: row; align-items: center; gap: clamp(2rem, 5vw, 5rem); }
 .magazine-card:only-child .magazine-cover-image, .magazine-card:only-child .magazine-cover { width: min(32%, 330px); flex: 0 0 auto; margin: 0; }
@@ -233,6 +235,7 @@ dialog::backdrop { background: rgba(5,24,39,.72); backdrop-filter: blur(4px); }
 .issue-articles-heading h3 { margin: 0; font-family: var(--serif); font-size: clamp(2rem, 4vw, 3.5rem); }
 .issue-articles-heading > span { color: #647987; font-size: .85rem; }
 .article-tools { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 0; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--line); }
+.article-issue-tabs { margin-bottom: 1rem; }
 .article-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; margin-top: 1.5rem; border: 1px solid var(--line); background: var(--line); }
 .article-card { display: flex; min-width: 0; min-height: 245px; flex-direction: column; padding: clamp(1.3rem, 2.5vw, 2rem); background: var(--white); }
 .article-card h4 { margin: 0 0 .55rem; font-family: var(--serif); font-size: 1.35rem; line-height: 1.45; }

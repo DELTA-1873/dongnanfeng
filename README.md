@@ -13,7 +13,7 @@
 - 阅读互动：评论、投票、五星评分
 - 自建书目：正式账号可创建，审核后公开
 - 社刊：展示历期刊物，PDF 可在站内阅读器直接翻阅
-- 2026 年刊：整刊阅读、35 篇分篇 PDF、文章/作者搜索与类型筛选
+- 2025、2026 年刊：整刊阅读、各 35 篇分篇 PDF、年份切换、文章/作者搜索与类型筛选
 - 社刊与创作互动：正式账号可为整期社刊、每篇社刊文章和成员作品分别进行五星评分、发表评论
 - 社员创作：正式账号上传 PDF 或 DOCX，可实名或匿名发布；DOCX 会先在浏览器转为 PDF，云端统一保存 PDF
 - 账号：用户名和密码注册、登录、退出；账号名用于实名署名
@@ -68,7 +68,8 @@
 3. `supabase/migrations/20260920_add_events.sql`
 4. `supabase/migrations/20260920_add_accounts_magazines_creations.sql`
 5. `supabase/migrations/20260920_add_2026_issue_articles.sql`
-6. `supabase/migrations/20260920_add_content_feedback_and_pdf_uploads.sql`
+6. `supabase/migrations/20260920_add_2025_issue_articles.sql`
+7. `supabase/migrations/20260920_add_content_feedback_and_pdf_uploads.sql`
 
 最后一个迁移会创建账号资料、社刊、创作表和两个私有 Bucket，同时收紧现有书目互动的写权限。脚本使用 `if not exists` 和 `drop policy if exists`，方便维护时重新执行；但仍建议先备份生产数据。
 
@@ -115,6 +116,23 @@
 ```
 
 随后重新生成封面并部署。数据库目录由 `20260920_add_2026_issue_articles.sql` 维护；前端保留 `articles.json` 作为静态发布目录，避免数据库临时不可用时整刊入口消失。
+
+### 2025 年刊的站内文件
+
+2025 年刊原文件为项目根目录的 `25社刊.pdf`。站内发布文件位于：
+
+- `dist/magazines/2025/dongnanfeng-2025.pdf`：完整年刊
+- `dist/magazines/2025/cover.png`：封面预览
+- `dist/magazines/2025/articles/`：35 篇独立 PDF
+- `dist/magazines/2025/articles.json`：前端文章目录
+
+维护时修改 `scripts/split_issue_2025.py` 中的 `ARTICLES` 后运行：
+
+```bash
+/Users/eltad/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 scripts/split_issue_2025.py
+```
+
+2025 年刊的第 1 印刷页采用完整横版设计，后续正文从左右跨页中裁切；同一印刷页包含多首短诗时，各条目会保留相同的完整印刷页。数据库目录由 `20260920_add_2025_issue_articles.sql` 维护。
 
 ## 创作发布与管理
 

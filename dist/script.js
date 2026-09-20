@@ -3,6 +3,22 @@ import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 const COLORS = new Set(['blue', 'red', 'green', 'gold', 'black']);
+const ISSUE_IDS = {
+  2026: '20260000-0000-4000-8000-000000000001',
+  2025: '20250000-0000-4000-8000-000000000001'
+};
+const STATIC_ISSUES = [
+  {
+    id: ISSUE_IDS[2026], issue_number: '2026 年刊', title: '东南风文学社三十五周年年刊',
+    description: '收录卷首语、影像辑录、书单、小说、散文、诗歌与社史，共 35 篇独立内容。',
+    cover_url: './magazines/2026/cover.png', source_url: './magazines/2026/dongnanfeng-2026.pdf', published_at: '2026-08-01T00:00:00+08:00'
+  },
+  {
+    id: ISSUE_IDS[2025], issue_number: '2025 年刊', title: '东南风文学社三十四周年年刊',
+    description: '收录卷首语、随笔评论、小说、诗词、卷末语与社史，共 35 篇独立内容。',
+    cover_url: './magazines/2025/cover.png', source_url: './magazines/2025/dongnanfeng-2025.pdf', published_at: '2025-07-01T00:00:00+08:00'
+  }
+];
 let books = [];
 let currentUser = null;
 let memberProfile = null;
@@ -10,6 +26,7 @@ let selectedBookId = null;
 let activeFilter = 'all';
 let issueArticles = [];
 let activeArticleFilter = '全部';
+let activeIssueYear = '2026';
 let refreshTimer = null;
 let activeFeedback = null;
 let pdfModulePromise = null;
@@ -187,17 +204,10 @@ async function loadMagazines() {
   if (error) throw error;
   const grid = $('#magazine-grid');
   const issues = [...(data || [])];
-  if (!issues.some((issue) => String(issue.issue_number).includes('2026'))) {
-    issues.unshift({
-      id: '20260000-0000-4000-8000-000000000001',
-      issue_number: '2026 年刊',
-      title: '东南风文学社三十五周年年刊',
-      description: '收录卷首语、影像辑录、书单、小说、散文、诗歌与社史，共 35 篇独立内容。',
-      cover_url: './magazines/2026/cover.png',
-      source_url: './magazines/2026/dongnanfeng-2026.pdf',
-      published_at: '2026-08-01T00:00:00+08:00'
-    });
-  }
+  STATIC_ISSUES.forEach((fallback) => {
+    if (!issues.some((issue) => String(issue.issue_number).includes(fallback.issue_number.slice(0, 4)))) issues.push(fallback);
+  });
+  issues.sort((a, b) => String(b.published_at).localeCompare(String(a.published_at)));
   grid.innerHTML = issues.map((issue) => `<article class="magazine-card">
     ${issue.cover_url ? `<img class="magazine-cover-image" src="${escapeHtml(issue.cover_url)}" alt="${escapeHtml(issue.title)}封面" />` : `<div class="magazine-cover"><span>${escapeHtml(issue.issue_number)}</span><strong>${escapeHtml(issue.title)}</strong></div>`}
     <div class="magazine-copy">
@@ -213,28 +223,42 @@ async function loadMagazines() {
 }
 
 async function loadIssueArticles() {
-  const response = await fetch('./magazines/2026/articles.json?v=20260920');
-  if (!response.ok) throw new Error('2026 年刊文章目录加载失败。');
-  const staticArticles = await response.json();
-  const { data: databaseArticles, error } = await supabase
-    .from('magazine_articles')
-    .select('id,slug')
-    .order('sort_order', { ascending: true });
-  if (error) console.warn('社刊文章数据库目录暂不可用：', error.message);
-  const articleIds = new Map((databaseArticles || []).map((article) => [article.slug, article.id]));
-  issueArticles = staticArticles.map((article) => ({ ...article, id: articleIds.get(article.slug) || '' }));
-  const categories = ['全部', ...new Set(issueArticles.map((article) => article.category))];
-  $('#article-filters').innerHTML = categories.map((category) => `<button class="filter ${category === activeArticleFilter ? 'active' : ''}" type="button" data-article-filter="${escapeHtml(category)}" aria-pressed="${category === activeArticleFilter}">${escapeHtml(category)}</button>`).join('');
+  const responses = await Promise.all([
+    fetch('./magazines/2026/articles.json?v=20260920'),
+    fetch('./magazines/2025/articles.json?v=20260920')
+  ]);
+  if (responses.some((response) => !response.ok)) throw new Error('社刊文章目录加载失败。');
+  const [articles2026, articles2025] = await Promise.all(responses.map((response) => response.json()));
+  const [databaseArticleResult, databaseIssueResult] = await Promise.all([
+    supabase.from('magazine_articles').select('id,slug,issue_id').order('sort_order', { ascending: true }),
+    supabase.from('magazine_issues').select('id,issue_number')
+  ]);
+  if (databaseArticleResult.error) console.warn('社刊文章数据库目录暂不可用：', databaseArticleResult.error.message);
+  const issueYears = new Map((databaseIssueResult.data || []).map((issue) => [issue.id, String(issue.issue_number).match(/20\d{2}/)?.[0] || '']));
+  const articleIds = new Map((databaseArticleResult.data || []).map((article) => [`${issueYears.get(article.issue_id)}:${article.slug}`, article.id]));
+  issueArticles = [
+    ...articles2026.map((article) => ({ ...article, issueYear: '2026', id: articleIds.get(`2026:${article.slug}`) || '' })),
+    ...articles2025.map((article) => ({ ...article, issueYear: '2025', id: articleIds.get(`2025:${article.slug}`) || '' }))
+  ];
+  renderArticleControls();
   renderIssueArticles();
+}
+
+function renderArticleControls() {
+  $('#article-issue-tabs').innerHTML = ['2026', '2025'].map((year) => `<button class="filter ${year === activeIssueYear ? 'active' : ''}" type="button" data-issue-year="${year}" aria-pressed="${year === activeIssueYear}">${year} 年刊</button>`).join('');
+  const categories = ['全部', ...new Set(issueArticles.filter((article) => article.issueYear === activeIssueYear).map((article) => article.category))];
+  if (!categories.includes(activeArticleFilter)) activeArticleFilter = '全部';
+  $('#article-filters').innerHTML = categories.map((category) => `<button class="filter ${category === activeArticleFilter ? 'active' : ''}" type="button" data-article-filter="${escapeHtml(category)}" aria-pressed="${category === activeArticleFilter}">${escapeHtml(category)}</button>`).join('');
 }
 
 function renderIssueArticles() {
   const term = $('#article-search').value.trim().toLowerCase();
-  const matches = issueArticles.filter((article) => {
+  const activeArticles = issueArticles.filter((article) => article.issueYear === activeIssueYear);
+  const matches = activeArticles.filter((article) => {
     const categoryMatch = activeArticleFilter === '全部' || article.category === activeArticleFilter;
     return categoryMatch && `${article.title} ${article.author} ${article.category}`.toLowerCase().includes(term);
   });
-  $('#issue-article-count').textContent = `共 ${matches.length} / ${issueArticles.length} 篇`;
+  $('#issue-article-count').textContent = `${activeIssueYear} 年刊 · 共 ${matches.length} / ${activeArticles.length} 篇`;
   $('#article-grid').innerHTML = matches.length ? matches.map((article) => {
     const pages = article.start === article.end ? `第 ${article.start} 页` : `第 ${article.start}–${article.end} 页`;
     return `<article class="article-card">
@@ -765,6 +789,14 @@ $$('#catalog-filters .filter').forEach((button) => button.addEventListener('clic
 }));
 
 $('#article-search').addEventListener('input', renderIssueArticles);
+$('#article-issue-tabs').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-issue-year]');
+  if (!button) return;
+  activeIssueYear = button.dataset.issueYear;
+  activeArticleFilter = '全部';
+  renderArticleControls();
+  renderIssueArticles();
+});
 $('#article-filters').addEventListener('click', (event) => {
   const button = event.target.closest('[data-article-filter]');
   if (!button) return;
