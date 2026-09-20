@@ -12,6 +12,7 @@
 - 阅读互动：评论、投票、五星评分
 - 自建书目：正式账号可创建，审核后公开
 - 社刊：展示历期刊物并通过临时签名链接查阅私有 PDF
+- 2026 年刊：整刊阅读、35 篇分篇 PDF、文章/作者搜索与类型筛选
 - 社员创作：正式账号上传 PDF、DOC、DOCX，可实名或匿名发布
 - 账号：用户名和密码注册、登录、退出；账号名用于实名署名
 - 权限：未注册访客只读；正式账号才可评论、评分、投票、建书目和投稿
@@ -36,6 +37,7 @@
 | `events` | 近期活动 | 已发布活动 | Dashboard 管理员 |
 | `member_profiles` | 账号名与公开资料 | 是 | 注册触发器创建，本人更新 |
 | `magazine_issues` | 社刊期号、介绍和文件路径 | 已发布社刊 | Dashboard 管理员 |
+| `magazine_articles` | 社刊分篇目录、作者、分类和页码 | 已发布社刊的文章 | SQL 迁移维护 |
 | `creations` | 创作元数据、署名模式和文件路径 | 已发布作品 | 正式账号本人 |
 | `blog_profiles` / `blog_posts` / `blog_post_comments` | 预留博客数据 | 按各表 RLS | 按各表 RLS |
 
@@ -54,6 +56,7 @@
 2. `supabase/migrations/20260920_reset_catalog_and_add_blogs.sql`
 3. `supabase/migrations/20260920_add_events.sql`
 4. `supabase/migrations/20260920_add_accounts_magazines_creations.sql`
+5. `supabase/migrations/20260920_add_2026_issue_articles.sql`
 
 最后一个迁移会创建账号资料、社刊、创作表和两个私有 Bucket，同时收紧现有书目互动的写权限。脚本使用 `if not exists` 和 `drop policy if exists`，方便维护时重新执行；但仍建议先备份生产数据。
 
@@ -82,7 +85,24 @@
    - `published_at`：发布时间
 4. 保存后网页会实时出现该期社刊。
 
-`cover_url` 是预留字段；当前网页使用自动生成的社刊封面，不依赖外部图片。
+`cover_url` 可填写站内封面或可信图片地址；2026 年刊使用从原 PDF 首页生成的站内封面。
+
+### 2026 年刊的站内文件
+
+2026 年刊原文件为项目根目录的 `26社刊 A5.pdf`。站内发布文件位于：
+
+- `dist/magazines/2026/dongnanfeng-2026.pdf`：完整年刊
+- `dist/magazines/2026/cover.png`：封面预览
+- `dist/magazines/2026/articles/`：按印刷页裁切后的 35 篇独立 PDF
+- `dist/magazines/2026/articles.json`：前端文章目录
+
+刊物采用左右跨页排版。维护脚本 `scripts/split_issue_2026.py` 会把每个跨页裁成独立 A5 印刷页，再按文章页码组合输出。若替换源刊物或调整目录，先修改脚本中的 `ARTICLES`，然后运行：
+
+```bash
+/Users/eltad/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 scripts/split_issue_2026.py
+```
+
+随后重新生成封面并部署。数据库目录由 `20260920_add_2026_issue_articles.sql` 维护；前端保留 `articles.json` 作为静态发布目录，避免数据库临时不可用时整刊入口消失。
 
 ## 创作发布与管理
 

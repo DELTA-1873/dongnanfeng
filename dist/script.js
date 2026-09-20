@@ -8,6 +8,8 @@ let currentUser = null;
 let memberProfile = null;
 let selectedBookId = null;
 let activeFilter = 'all';
+let issueArticles = [];
+let activeArticleFilter = '全部';
 let refreshTimer = null;
 
 const $ = (selector, scope = document) => scope.querySelector(selector);
@@ -175,17 +177,54 @@ async function loadMagazines() {
   const { data, error } = await supabase.from('magazine_issues').select('*').eq('is_published', true).order('published_at', { ascending: false });
   if (error) throw error;
   const grid = $('#magazine-grid');
-  if (!data?.length) {
-    grid.innerHTML = '<div class="content-empty"><strong>暂无社刊</strong><p>新一期正在整理中。</p></div>';
-    return;
+  const issues = [...(data || [])];
+  if (!issues.some((issue) => String(issue.issue_number).includes('2026'))) {
+    issues.unshift({
+      issue_number: '2026 年刊',
+      title: '东南风文学社三十五周年年刊',
+      description: '收录卷首语、影像辑录、书单、小说、散文、诗歌与社史，共 35 篇独立内容。',
+      cover_url: './magazines/2026/cover.png',
+      source_url: './magazines/2026/dongnanfeng-2026.pdf',
+      published_at: '2026-08-01T00:00:00+08:00'
+    });
   }
-  grid.innerHTML = data.map((issue) => `<article class="magazine-card">
-    <div class="magazine-cover"><span>${escapeHtml(issue.issue_number)}</span><strong>${escapeHtml(issue.title)}</strong></div>
-    <p class="card-meta">${new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long' }).format(new Date(issue.published_at))}</p>
-    <h3>${escapeHtml(issue.title)}</h3>
-    <p>${escapeHtml(issue.description || '本期社刊')}</p>
-    ${issue.file_path ? `<button class="file-link" type="button" data-file-bucket="magazines" data-file-path="${escapeHtml(issue.file_path)}">查阅 PDF ↗</button>` : '<button class="file-link" type="button" disabled>电子版整理中</button>'}
+  grid.innerHTML = issues.map((issue) => `<article class="magazine-card">
+    ${issue.cover_url ? `<img class="magazine-cover-image" src="${escapeHtml(issue.cover_url)}" alt="${escapeHtml(issue.title)}封面" />` : `<div class="magazine-cover"><span>${escapeHtml(issue.issue_number)}</span><strong>${escapeHtml(issue.title)}</strong></div>`}
+    <div class="magazine-copy">
+      <p class="card-meta">${new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long' }).format(new Date(issue.published_at))}</p>
+      <h3>${escapeHtml(issue.title)}</h3>
+      <p>${escapeHtml(issue.description || '本期社刊')}</p>
+      ${issue.source_url ? `<a class="file-link" href="${escapeHtml(issue.source_url)}" target="_blank" rel="noopener">阅读整刊 ↗</a>` : issue.file_path ? `<button class="file-link" type="button" data-file-bucket="magazines" data-file-path="${escapeHtml(issue.file_path)}">查阅 PDF ↗</button>` : '<button class="file-link" type="button" disabled>电子版整理中</button>'}
+    </div>
   </article>`).join('');
+}
+
+async function loadIssueArticles() {
+  const response = await fetch('./magazines/2026/articles.json?v=20260920');
+  if (!response.ok) throw new Error('2026 年刊文章目录加载失败。');
+  issueArticles = await response.json();
+  const categories = ['全部', ...new Set(issueArticles.map((article) => article.category))];
+  $('#article-filters').innerHTML = categories.map((category) => `<button class="filter ${category === activeArticleFilter ? 'active' : ''}" type="button" data-article-filter="${escapeHtml(category)}" aria-pressed="${category === activeArticleFilter}">${escapeHtml(category)}</button>`).join('');
+  renderIssueArticles();
+}
+
+function renderIssueArticles() {
+  const term = $('#article-search').value.trim().toLowerCase();
+  const matches = issueArticles.filter((article) => {
+    const categoryMatch = activeArticleFilter === '全部' || article.category === activeArticleFilter;
+    return categoryMatch && `${article.title} ${article.author} ${article.category}`.toLowerCase().includes(term);
+  });
+  $('#issue-article-count').textContent = `共 ${matches.length} / ${issueArticles.length} 篇`;
+  $('#article-grid').innerHTML = matches.length ? matches.map((article) => {
+    const pages = article.start === article.end ? `第 ${article.start} 页` : `第 ${article.start}–${article.end} 页`;
+    return `<article class="article-card">
+      <p class="card-meta">${escapeHtml(article.category)}</p>
+      <h4>${escapeHtml(article.title)}</h4>
+      <p>${escapeHtml(article.author)}</p>
+      <p class="article-pages">${pages} · ${article.page_count} 页</p>
+      <a class="file-link" href="${escapeHtml(article.file)}" target="_blank" rel="noopener">阅读全文 ↗</a>
+    </article>`;
+  }).join('') : '<div class="content-empty"><strong>没有找到文章</strong><p>换个关键词或分类试试。</p></div>';
 }
 
 async function loadCreations() {
@@ -433,6 +472,19 @@ $$('#catalog-filters .filter').forEach((button) => button.addEventListener('clic
   renderCatalog();
 }));
 
+$('#article-search').addEventListener('input', renderIssueArticles);
+$('#article-filters').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-article-filter]');
+  if (!button) return;
+  activeArticleFilter = button.dataset.articleFilter;
+  $$('#article-filters .filter').forEach((item) => {
+    const selected = item === button;
+    item.classList.toggle('active', selected);
+    item.setAttribute('aria-pressed', String(selected));
+  });
+  renderIssueArticles();
+});
+
 $('#book-grid').addEventListener('click', (event) => {
   const button = event.target.closest('[data-book-id]');
   if (button) openBook(button.dataset.bookId);
@@ -634,6 +686,7 @@ async function init() {
       renderEvents([]);
     });
     await loadMagazines();
+    await loadIssueArticles();
     await loadCreations();
     subscribeToChanges();
   } catch (error) {

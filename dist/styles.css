@@ -176,6 +176,9 @@ dialog::backdrop { background: rgba(5,24,39,.72); backdrop-filter: blur(4px); }
 .creations { background: var(--paper); }
 .magazine-grid, .creation-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; border: 1px solid var(--line); background: var(--line); }
 .magazine-card, .creation-card { display: flex; min-width: 0; flex-direction: column; padding: clamp(1.4rem, 3vw, 2.4rem); background: var(--white); }
+.magazine-card:only-child { grid-column: 1 / -1; flex-direction: row; align-items: center; gap: clamp(2rem, 5vw, 5rem); }
+.magazine-card:only-child .magazine-cover-image, .magazine-card:only-child .magazine-cover { width: min(32%, 330px); flex: 0 0 auto; margin: 0; }
+.magazine-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; align-items: flex-start; }
 .magazine-cover { position: relative; aspect-ratio: 4 / 5; display: flex; flex-direction: column; justify-content: space-between; margin-bottom: 1.5rem; padding: 1.6rem; overflow: hidden; color: white; background: var(--ink); }
 .magazine-cover::after { content: "东南风"; position: absolute; right: -1rem; bottom: -1.5rem; color: rgba(255,255,255,.08); font-family: var(--serif); font-size: clamp(4rem, 9vw, 8rem); font-weight: 900; writing-mode: vertical-rl; }
 .magazine-cover span, .magazine-cover strong { position: relative; z-index: 1; }
@@ -192,6 +195,18 @@ dialog::backdrop { background: rgba(5,24,39,.72); backdrop-filter: blur(4px); }
 .content-empty { grid-column: 1 / -1; display: grid; min-height: 250px; place-content: center; padding: 2rem; text-align: center; background: var(--white); }
 .content-empty strong { font-family: var(--serif); font-size: 2rem; }
 .content-empty p { margin: .35rem 0 0; color: #71808a; }
+.issue-articles { margin-top: clamp(4rem, 7vw, 7rem); }
+.issue-articles-heading { display: flex; align-items: end; justify-content: space-between; gap: 2rem; margin-bottom: 1.5rem; }
+.issue-articles-heading h3 { margin: 0; font-family: var(--serif); font-size: clamp(2rem, 4vw, 3.5rem); }
+.issue-articles-heading > span { color: #647987; font-size: .85rem; }
+.article-tools { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 0; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--line); }
+.article-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; margin-top: 1.5rem; border: 1px solid var(--line); background: var(--line); }
+.article-card { display: flex; min-width: 0; min-height: 245px; flex-direction: column; padding: clamp(1.3rem, 2.5vw, 2rem); background: var(--white); }
+.article-card h4 { margin: 0 0 .55rem; font-family: var(--serif); font-size: 1.35rem; line-height: 1.45; }
+.article-card p { margin: 0; color: #637785; font-size: .86rem; }
+.article-card .article-pages { margin-top: .35rem; color: #87939a; font-size: .76rem; }
+.article-card .file-link { margin-top: auto; }
+.magazine-cover-image { width: 100%; aspect-ratio: 1 / 1.42; margin-bottom: 1.5rem; object-fit: cover; object-position: center; box-shadow: 0 16px 35px rgba(16,42,67,.15); }
 .heading-note { max-width: 18rem; margin: 0; color: #5c7181; }
 .event-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border: 1px solid var(--line); }
 .events-empty { grid-column: 1 / -1; display: grid; min-height: 270px; place-content: center; padding: 3rem 1.25rem; text-align: center; background: var(--white); }
@@ -254,6 +269,10 @@ footer { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center
   .form-grid .full { grid-column: auto; }
   .event-grid { grid-template-columns: 1fr; }
   .magazine-grid, .creation-grid { grid-template-columns: 1fr; }
+  .magazine-card:only-child { flex-direction: column; align-items: stretch; }
+  .magazine-card:only-child .magazine-cover-image, .magazine-card:only-child .magazine-cover { width: min(100%, 330px); margin: 0 auto; }
+  .article-grid { grid-template-columns: 1fr; }
+  .article-tools, .issue-articles-heading { align-items: stretch; flex-direction: column; }
   .access-note { margin-top: -1.5rem; }
   .event-card { grid-template-columns: 70px 1fr; gap: 1rem; }
   .event-card time strong { font-size: 2.8rem; }
