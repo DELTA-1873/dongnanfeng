@@ -13,15 +13,13 @@
 - 自建书目：正式账号可创建，审核后公开
 - 社刊：展示历期刊物并通过临时签名链接查阅私有 PDF
 - 社员创作：正式账号上传 PDF、DOC、DOCX，可实名或匿名发布
-- 账号：邮箱和密码注册、登录、退出；账号名用于实名署名
+- 账号：用户名和密码注册、登录、退出；账号名用于实名署名
 - 权限：未注册访客只读；正式账号才可评论、评分、投票、建书目和投稿
 - 实时同步：书目、互动、活动、社刊与创作变更通过 Supabase Realtime 更新
 
 ## 安全模型
 
-账号由 Supabase Auth 管理。用户在网页输入密码后，浏览器通过 HTTPS 直接提交给 Supabase Auth；Supabase 在服务端使用加盐 `bcrypt` 哈希保存。密码不会写入前端文件、`localStorage`、公共数据库表或本仓库。
-
-不要在浏览器端先做固定哈希再把哈希当密码发送：固定哈希会成为可重放的“等效密码”，并不能替代 TLS 与服务端加盐哈希。
+账号由 Supabase Auth 管理。试行版只向用户显示用户名和密码字段。`dist/script.js` 会把标准化后的用户名做 SHA-256，生成不可见的内部 Auth 邮箱标识；该标识只用于兼容 Supabase 的邮箱密码登录接口，不用于收发邮件。密码仍由 Supabase Auth 管理，不写入业务表或仓库。
 
 `dist/config.js` 只能保存公开的 Project URL 和 Publishable Key。严禁把 Secret Key、`service_role` Key、数据库密码或用户密码提交到 GitHub。
 
@@ -63,14 +61,11 @@
 
 在 Dashboard → Authentication 中：
 
-1. Providers → Email：开启邮箱密码注册。
+1. Providers → Email：开启邮箱密码注册，并关闭 **Confirm email**。试行账号没有真实邮箱，开启确认会导致注册后无法登录。
 2. Providers → Anonymous：保持开启，供只读访客使用。
-3. URL Configuration：
-   - Site URL：`https://delta-1873.github.io/dongnanfeng/`
-   - Redirect URLs：加入 `https://delta-1873.github.io/dongnanfeng/`
-4. 若开启 Confirm email，注册后必须点击验证邮件才能登录；若关闭，注册后立即登录。
+3. URL Configuration 的 Site URL 保持为 `https://delta-1873.github.io/dongnanfeng/`。
 
-生产环境建议开启邮箱验证。Supabase 默认邮件服务有发送速率限制，正式运营时应在 Authentication → Email 中配置自有 SMTP。
+这种用户名方案适合小范围试行，没有找回密码功能。若未来公开运营，应迁移到真实邮箱验证，并增加密码重置流程。
 
 ## 如何发布社刊
 
@@ -111,7 +106,7 @@
 python3 -m http.server 4173 --directory dist
 ```
 
-然后访问 <http://localhost:4173>。若本地测试注册邮件回跳，还需把 `http://localhost:4173/` 临时加入 Supabase Redirect URLs。
+然后访问 <http://localhost:4173>。
 
 主要文件：
 

@@ -160,9 +160,8 @@ dialog::backdrop { background: rgba(5,24,39,.72); backdrop-filter: blur(4px); }
 .account-form { display: grid; gap: 1rem; }
 .account-form label { display: grid; gap: .4rem; color: #536978; font-size: .86rem; }
 .account-form input, .creation-form input, .creation-form select, .creation-form textarea { width: 100%; padding: .8rem; border: 1px solid var(--line); color: var(--ink); background: white; font: inherit; }
-.form-help { margin: 0; color: #73828b; font-size: .76rem; }
 .account-signed strong { display: block; font-family: var(--serif); font-size: 2.6rem; }
-.account-signed > p:not(.account-label) { margin: 0 0 2rem; color: #657987; overflow-wrap: anywhere; }
+.account-signed strong { margin-bottom: 2rem; }
 .account-label { margin: 0; color: var(--red); font-size: .75rem; letter-spacing: .16em; }
 .creation-dialog { width: min(760px, calc(100% - 2rem)); }
 .creation-form { padding: clamp(2.4rem, 6vw, 5rem); }

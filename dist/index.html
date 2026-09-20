@@ -210,22 +210,19 @@
                 <button class="account-tab" type="button" data-account-tab="register" role="tab" aria-selected="false">注册</button>
               </div>
               <form class="account-form" id="login-form">
-                <label>邮箱<input name="email" type="email" autocomplete="email" required /></label>
-                <label>密码<input name="password" type="password" minlength="8" autocomplete="current-password" required /></label>
+                <label>用户名<input name="username" minlength="2" maxlength="24" autocomplete="username" required /></label>
+                <label>密码<input name="password" type="password" minlength="6" autocomplete="current-password" required /></label>
                 <button class="button button-primary" type="submit">登录 <span aria-hidden="true">→</span></button>
               </form>
               <form class="account-form" id="register-form" hidden>
                 <label>账号名<input name="username" minlength="2" maxlength="24" autocomplete="username" required /></label>
-                <label>邮箱<input name="email" type="email" autocomplete="email" required /></label>
-                <label>密码<input name="password" type="password" minlength="8" autocomplete="new-password" required /></label>
-                <p class="form-help">至少 8 位。密码只经 HTTPS 交给 Supabase Auth，在服务端加盐哈希保存。</p>
+                <label>密码<input name="password" type="password" minlength="6" autocomplete="new-password" required /></label>
                 <button class="button button-primary" type="submit">创建账号 <span aria-hidden="true">→</span></button>
               </form>
             </div>
             <div class="account-signed" id="account-signed-panel" hidden>
               <p class="account-label">当前账号</p>
               <strong id="account-username">—</strong>
-              <p id="account-email"></p>
               <button class="button button-dark" id="logout-button" type="button">退出登录</button>
             </div>
           </div>

@@ -31,13 +31,21 @@ function showToast(message, type = 'info', duration = 2800) {
 function readableError(error) {
   console.error(error);
   if (error?.code === '23505') return '账号名已被使用，或你已经完成过这项操作。';
-  if (/invalid login credentials/i.test(error?.message || '')) return '邮箱或密码不正确。';
-  if (/user already registered/i.test(error?.message || '')) return '这个邮箱已经注册，请直接登录。';
+  if (/invalid login credentials/i.test(error?.message || '')) return '用户名或密码不正确。';
+  if (/user already registered/i.test(error?.message || '')) return '这个用户名已经注册，请直接登录。';
   if (error?.message?.includes('relation') && error?.message?.includes('does not exist')) return '数据库尚未初始化，请先执行建表脚本。';
   return error?.message || '云端服务暂时不可用，请稍后重试。';
 }
 
 const isRegisteredUser = () => Boolean(currentUser && currentUser.is_anonymous === false);
+
+async function accountEmail(username) {
+  const normalized = String(username).trim().normalize('NFKC').toLowerCase();
+  const bytes = new TextEncoder().encode(normalized);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  const identifier = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `${identifier}@account.dongnanfeng.cn`;
+}
 
 function requireRegistered() {
   if (isRegisteredUser()) return true;
@@ -69,7 +77,6 @@ function refreshAccountUi() {
   $('#account-guest-panel').hidden = registered;
   $('#account-signed-panel').hidden = !registered;
   $('#account-username').textContent = memberProfile?.username || '—';
-  $('#account-email').textContent = registered ? currentUser.email || '' : '';
   $('#creation-access-note').textContent = registered
     ? `当前以“${memberProfile?.username || '社员'}”登录，可实名或匿名发布作品。`
     : '登录正式账号后可上传 PDF 或 Word；访客可以浏览和下载已发布作品。';
@@ -340,9 +347,10 @@ $('#login-form').addEventListener('submit', (event) => {
   const submit = event.currentTarget.querySelector('[type="submit"]');
   withBusy(submit, async () => {
     const form = new FormData(event.currentTarget);
+    const username = String(form.get('username')).trim();
     await supabase.auth.signOut({ scope: 'local' });
     const { data, error } = await supabase.auth.signInWithPassword({
-      email: String(form.get('email')).trim(),
+      email: await accountEmail(username),
       password: String(form.get('password'))
     });
     if (error) {
@@ -363,13 +371,13 @@ $('#register-form').addEventListener('submit', (event) => {
   const submit = event.currentTarget.querySelector('[type="submit"]');
   withBusy(submit, async () => {
     const form = new FormData(event.currentTarget);
+    const username = String(form.get('username')).trim();
     await supabase.auth.signOut({ scope: 'local' });
     const { data, error } = await supabase.auth.signUp({
-      email: String(form.get('email')).trim(),
+      email: await accountEmail(username),
       password: String(form.get('password')),
       options: {
-        data: { username: String(form.get('username')).trim() },
-        emailRedirectTo: 'https://delta-1873.github.io/dongnanfeng/'
+        data: { username }
       }
     });
     if (error) {
@@ -380,7 +388,7 @@ $('#register-form').addEventListener('submit', (event) => {
       await restoreBrowsingSession();
       closeDialog($('#account-dialog'));
       event.currentTarget.reset();
-      showToast('注册申请已提交，请查收验证邮件后再登录。', 'success', 6000);
+      showToast('账号尚未启用。请确认 Supabase 已关闭邮箱确认。', 'error', 6000);
       return;
     }
     currentUser = data.user;
