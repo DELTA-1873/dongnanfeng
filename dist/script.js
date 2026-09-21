@@ -225,7 +225,7 @@ async function loadMagazines() {
       <h3>${escapeHtml(issue.title)}</h3>
       <p>${escapeHtml(issue.description || '本期社刊')}</p>
       <div class="card-actions">
-        ${issue.source_url ? `<a class="file-link" href="${escapeHtml(versionedIssueAsset(issue.source_url))}" data-reader-url="${escapeHtml(versionedIssueAsset(issue.source_url))}" data-reader-title="${escapeHtml(issue.title)}" data-reader-mime="application/pdf">站内阅读 ↗</a>` : issue.file_path ? `<button class="file-link" type="button" data-file-bucket="magazines" data-file-path="${escapeHtml(issue.file_path)}" data-file-mime="application/pdf" data-reader-title="${escapeHtml(issue.title)}">站内阅读 ↗</button>` : '<button class="file-link" type="button" disabled>电子版整理中</button>'}
+        ${issue.source_url ? `<button class="file-link" type="button" data-reader-url="${escapeHtml(versionedIssueAsset(issue.source_url))}" data-reader-title="${escapeHtml(issue.title)}" data-reader-mime="application/pdf">站内阅读 ↗</button>` : issue.file_path ? `<button class="file-link" type="button" data-file-bucket="magazines" data-file-path="${escapeHtml(issue.file_path)}" data-file-mime="application/pdf" data-reader-title="${escapeHtml(issue.title)}">站内阅读 ↗</button>` : '<button class="file-link" type="button" disabled>电子版整理中</button>'}
         <button class="file-link" type="button" data-feedback-type="magazine" data-feedback-id="${escapeHtml(issue.id)}" data-feedback-title="${escapeHtml(issue.title)}">点评与评分 ☆</button>
       </div>
     </div>
@@ -277,7 +277,7 @@ function renderIssueArticles() {
       <p>${escapeHtml(article.author)}</p>
       <p class="article-pages">${pages} · ${article.page_count} 页</p>
       <div class="card-actions">
-        <a class="file-link" href="${escapeHtml(versionedIssueAsset(article.file))}" data-reader-url="${escapeHtml(versionedIssueAsset(article.file))}" data-reader-title="${escapeHtml(article.title)}" data-reader-mime="application/pdf">阅读全文 ↗</a>
+        <button class="file-link" type="button" data-reader-url="${escapeHtml(versionedIssueAsset(article.file))}" data-reader-title="${escapeHtml(article.title)}" data-reader-mime="application/pdf">阅读全文 ↗</button>
         ${article.id ? `<button class="file-link" type="button" data-feedback-type="article" data-feedback-id="${escapeHtml(article.id)}" data-feedback-title="${escapeHtml(article.title)}">点评与评分 ☆</button>` : '<button class="file-link" type="button" disabled title="请先同步社刊文章数据库">点评待同步</button>'}
       </div>
     </article>`;
@@ -526,7 +526,6 @@ async function openReader(url, title, mimeType, options = {}) {
   readerRenderVersion += 1;
   readerLoadingTask = null;
   $('#reader-title').textContent = title || '作品阅读器';
-  $('#reader-open-original').href = url;
   $('#reader-toolbar').hidden = true;
   $('#reader-pdf-stage').hidden = true;
   documentView.hidden = true;
@@ -539,7 +538,7 @@ async function openReader(url, title, mimeType, options = {}) {
     try {
       await openPdf(url, options);
     } catch (error) {
-      status.textContent = 'PDF 加载失败，请使用“新窗口打开”。';
+      status.textContent = 'PDF 加载失败，请关闭阅读器后重试。';
       console.error(error);
     }
     return;
@@ -559,13 +558,13 @@ async function openReader(url, title, mimeType, options = {}) {
       documentView.hidden = false;
       status.hidden = true;
     } catch (error) {
-      status.textContent = '浏览器暂时无法预览这个 Word 文件，请使用“新窗口打开”。';
+      status.textContent = '浏览器暂时无法预览这个 Word 文件，请稍后重试。';
       console.error(error);
     }
     return;
   }
 
-  status.textContent = '旧版 DOC 文件暂不支持站内预览，请使用“新窗口打开”。';
+  status.textContent = '旧版 DOC 文件暂不支持站内预览，请先转换为 PDF 或 DOCX。';
 }
 
 const ratingFor = (book) => {
@@ -828,7 +827,7 @@ document.addEventListener('click', (event) => {
       }
     ).catch((error) => {
       console.error(error);
-      showToast('阅读器打开失败，请使用“新窗口打开”。', 'error', 5000);
+      showToast('阅读器打开失败，请关闭后重试。', 'error', 5000);
     });
     return;
   }
@@ -1092,9 +1091,17 @@ $('#reader-fit').addEventListener('click', () => {
 
 document.addEventListener('keydown', (event) => {
   if (!$('#reader-dialog').open || !readerPdf) return;
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
+    event.preventDefault();
+    showToast('站内阅读模式不提供直接下载', 'info');
+    return;
+  }
   if (event.key === 'ArrowLeft') $('#reader-prev').click();
   if (event.key === 'ArrowRight') $('#reader-next').click();
 });
+
+$('#reader-canvas').addEventListener('contextmenu', (event) => event.preventDefault());
+$('#reader-canvas').addEventListener('dragstart', (event) => event.preventDefault());
 
 window.addEventListener('resize', () => {
   clearTimeout(readerResizeTimer);
@@ -1122,7 +1129,6 @@ $('#reader-dialog').addEventListener('close', () => {
   $('#reader-document').hidden = true;
   $('#reader-status').hidden = false;
   $('#reader-status').textContent = '正在加载…';
-  $('#reader-open-original').href = '#';
 });
 
 $('#feedback-dialog').addEventListener('close', () => {
