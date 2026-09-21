@@ -138,6 +138,8 @@ async function loadLibrary({ refreshDetail = false, quiet = false } = {}) {
 
   books = bookResult.data.map((record) => {
     const comments = commentResult.data.filter((item) => item.book_id === record.id).map((item) => ({
+      id: item.id,
+      authorId: item.author_id,
       name: item.display_name,
       text: item.body,
       date: new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium' }).format(new Date(item.created_at))
@@ -283,12 +285,18 @@ function renderIssueArticles() {
 }
 
 async function loadCreations() {
-  const { data, error } = await supabase
-    .from('creations')
-    .select('id,title,summary,category,publish_anonymously,public_author,file_path,file_name,mime_type,file_size,published_at')
-    .eq('status', 'published')
-    .order('published_at', { ascending: false });
-  if (error) throw error;
+  const [creationResult, ownershipResult] = await Promise.all([
+    supabase
+      .from('creations')
+      .select('id,title,summary,category,publish_anonymously,public_author,file_path,file_name,mime_type,file_size,published_at')
+      .eq('status', 'published')
+      .order('published_at', { ascending: false }),
+    isRegisteredUser() ? supabase.rpc('get_my_creation_ids') : Promise.resolve({ data: [], error: null })
+  ]);
+  if (creationResult.error) throw creationResult.error;
+  if (ownershipResult.error) console.warn('作品删除权限尚未同步：', ownershipResult.error.message);
+  const data = creationResult.data;
+  const ownedCreationIds = new Set((ownershipResult.data || []).map((item) => item.creation_id));
   const grid = $('#creation-grid');
   if (!data?.length) {
     grid.innerHTML = '<div class="content-empty"><strong>暂无创作</strong><p>期待第一篇作品在这里出现。</p></div>';
@@ -305,6 +313,7 @@ async function loadCreations() {
       <div class="card-actions">
         <button class="file-link" type="button" data-file-bucket="creations" data-file-path="${escapeHtml(creation.file_path)}" data-file-mime="${escapeHtml(creation.mime_type || '')}" data-reader-title="${escapeHtml(creation.title)}">站内阅读 ↗</button>
         <button class="file-link" type="button" data-feedback-type="creation" data-feedback-id="${escapeHtml(creation.id)}" data-feedback-title="${escapeHtml(creation.title)}">点评与评分 ☆</button>
+        ${ownedCreationIds.has(creation.id) ? `<button class="file-link delete-action" type="button" data-delete-kind="creation" data-delete-id="${escapeHtml(creation.id)}" data-delete-path="${escapeHtml(creation.file_path)}" data-delete-title="${escapeHtml(creation.title)}">删除作品</button>` : ''}
       </div>
     </article>`;
   }).join('');
@@ -319,7 +328,7 @@ async function refreshFeedback() {
   if (!activeFeedback) return;
   const { type, id } = activeFeedback;
   const [commentResult, ratingResult] = await Promise.all([
-    supabase.from('content_comments').select('id,display_name,body,created_at').eq('target_type', type).eq('target_id', id).order('created_at', { ascending: false }),
+    supabase.from('content_comments').select('id,author_id,display_name,body,created_at').eq('target_type', type).eq('target_id', id).order('created_at', { ascending: false }),
     supabase.from('content_ratings').select('user_id,score').eq('target_type', type).eq('target_id', id)
   ]);
   if (commentResult.error) throw commentResult.error;
@@ -331,9 +340,9 @@ async function refreshFeedback() {
   const userRating = ratings.find((rating) => rating.user_id === currentUser?.id)?.score || 0;
   $('#feedback-average').textContent = ratings.length ? average.toFixed(1) : '—';
   $('#feedback-rating-count').textContent = ratings.length ? `${ratings.length} 人评分` : '暂无评分';
-  $('#feedback-stars').innerHTML = [1, 2, 3, 4, 5].map((score) => `<button class="star ${score <= userRating ? 'selected' : ''}" type="button" data-feedback-score="${score}" aria-label="评 ${score} 星" aria-pressed="${score === userRating}">★</button>`).join('');
+  $('#feedback-stars').innerHTML = [1, 2, 3, 4, 5].map((score) => `<button class="star ${score <= userRating ? 'selected' : ''}" type="button" data-feedback-score="${score}" aria-label="评 ${score} 星" aria-pressed="${score === userRating}">★</button>`).join('') + (userRating ? `<button class="delete-action rating-delete" type="button" data-delete-kind="feedback-rating" data-delete-type="${escapeHtml(type)}" data-delete-target="${escapeHtml(id)}">删除评分</button>` : '');
   $('#feedback-comment-count').textContent = `${comments.length} 条`;
-  $('#feedback-comment-list').innerHTML = comments.length ? comments.map((comment) => `<article class="comment"><header><strong>${escapeHtml(comment.display_name)}</strong><time>${new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium' }).format(new Date(comment.created_at))}</time></header><p>${escapeHtml(comment.body)}</p></article>`).join('') : '<p class="comment-empty">还没有点评，来写下第一条阅读感受吧。</p>';
+  $('#feedback-comment-list').innerHTML = comments.length ? comments.map((comment) => `<article class="comment"><header><strong>${escapeHtml(comment.display_name)}</strong><span class="comment-meta"><time>${new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium' }).format(new Date(comment.created_at))}</time>${isRegisteredUser() && comment.author_id === currentUser.id ? `<button class="delete-action" type="button" data-delete-kind="feedback-comment" data-delete-id="${escapeHtml(comment.id)}">删除</button>` : ''}</span></header><p>${escapeHtml(comment.body)}</p></article>`).join('') : '<p class="comment-empty">还没有点评，来写下第一条阅读感受吧。</p>';
   $('#feedback-access-note').textContent = isRegisteredUser() ? `将以账号名“${memberProfile?.username || '社员'}”发表。` : '注册或登录后可评分和发表点评。';
 }
 
@@ -628,12 +637,56 @@ function renderRating(book) {
   const rating = ratingFor(book);
   $('#rating-average').textContent = rating.count ? rating.average.toFixed(1) : '—';
   $('#rating-count').textContent = rating.count ? `${rating.count} 人评分` : '暂无评分';
-  $('#rating-stars').innerHTML = [1, 2, 3, 4, 5].map((score) => `<button class="star ${score <= book.userRating ? 'selected' : ''}" type="button" data-score="${score}" aria-label="评 ${score} 星" aria-pressed="${score === book.userRating}">★</button>`).join('');
+  $('#rating-stars').innerHTML = [1, 2, 3, 4, 5].map((score) => `<button class="star ${score <= book.userRating ? 'selected' : ''}" type="button" data-score="${score}" aria-label="评 ${score} 星" aria-pressed="${score === book.userRating}">★</button>`).join('') + (book.userRating ? `<button class="delete-action rating-delete" type="button" data-delete-kind="book-rating" data-delete-book="${escapeHtml(book.id)}">删除评分</button>` : '');
 }
 
 function renderComments(book) {
   $('#comments-count').textContent = `${book.comments.length} 条`;
-  $('#comment-list').innerHTML = book.comments.length ? [...book.comments].reverse().map((comment) => `<article class="comment"><header><strong>${escapeHtml(comment.name)}</strong><time>${escapeHtml(comment.date)}</time></header><p>${escapeHtml(comment.text)}</p></article>`).join('') : '<p class="comment-empty">还没有评论，来写下第一条阅读感受吧。</p>';
+  $('#comment-list').innerHTML = book.comments.length ? [...book.comments].reverse().map((comment) => `<article class="comment"><header><strong>${escapeHtml(comment.name)}</strong><span class="comment-meta"><time>${escapeHtml(comment.date)}</time>${isRegisteredUser() && comment.authorId === currentUser.id ? `<button class="delete-action" type="button" data-delete-kind="book-comment" data-delete-id="${escapeHtml(comment.id)}">删除</button>` : ''}</span></header><p>${escapeHtml(comment.text)}</p></article>`).join('') : '<p class="comment-empty">还没有评论，来写下第一条阅读感受吧。</p>';
+}
+
+async function deleteOwnContent(button) {
+  if (!requireRegistered()) return;
+  const kind = button.dataset.deleteKind;
+  const labels = {
+    'book-comment': '这条评论',
+    'book-rating': '你的书目评分',
+    'feedback-comment': '这条点评',
+    'feedback-rating': '你的评分',
+    creation: `作品“${button.dataset.deleteTitle || ''}”`
+  };
+  if (!window.confirm(`确定删除${labels[kind] || '这项内容'}吗？删除后无法恢复。`)) return;
+
+  if (kind === 'book-comment') {
+    const { error } = await supabase.from('comments').delete().eq('id', button.dataset.deleteId).eq('author_id', currentUser.id);
+    if (error) throw error;
+    await loadLibrary({ refreshDetail: true, quiet: true });
+  } else if (kind === 'book-rating') {
+    const { error } = await supabase.from('ratings').delete().eq('book_id', button.dataset.deleteBook).eq('user_id', currentUser.id);
+    if (error) throw error;
+    await loadLibrary({ refreshDetail: true, quiet: true });
+  } else if (kind === 'feedback-comment') {
+    const { error } = await supabase.from('content_comments').delete().eq('id', button.dataset.deleteId).eq('author_id', currentUser.id);
+    if (error) throw error;
+    await refreshFeedback();
+  } else if (kind === 'feedback-rating') {
+    const { error } = await supabase.from('content_ratings').delete()
+      .eq('target_type', button.dataset.deleteType)
+      .eq('target_id', button.dataset.deleteTarget)
+      .eq('user_id', currentUser.id);
+    if (error) throw error;
+    await refreshFeedback();
+  } else if (kind === 'creation') {
+    const { error } = await supabase.from('creations').delete().eq('id', button.dataset.deleteId);
+    if (error) throw error;
+    if (activeFeedback?.type === 'creation' && activeFeedback.id === button.dataset.deleteId) closeDialog($('#feedback-dialog'));
+    await loadCreations();
+    const { error: storageError } = await supabase.storage.from('creations').remove([button.dataset.deletePath]);
+    if (storageError) throw new Error('作品已删除，但云端文件清理失败，请联系管理员。');
+  } else {
+    throw new Error('无法识别删除目标。');
+  }
+  showToast('已删除', 'success');
 }
 
 function closeDialog(dialog) {
@@ -703,7 +756,7 @@ $('#login-form').addEventListener('submit', (event) => {
     await loadMemberProfile();
     refreshAccountUi();
     closeDialog($('#account-dialog'));
-    await Promise.all([loadLibrary({ quiet: true }), loadCreations()]);
+    await Promise.all([loadLibrary({ refreshDetail: true, quiet: true }), loadCreations()]);
     showToast(`欢迎回来，${memberProfile.username}`, 'success');
   });
 });
@@ -746,11 +799,16 @@ $('#logout-button').addEventListener('click', (event) => withBusy(event.currentT
   await supabase.auth.signOut({ scope: 'local' });
   await restoreBrowsingSession();
   closeDialog($('#account-dialog'));
-  await loadLibrary({ quiet: true });
+  await Promise.all([loadLibrary({ refreshDetail: true, quiet: true }), loadCreations()]);
   showToast('已退出账号，当前为只读访客模式。', 'success');
 }));
 
 document.addEventListener('click', (event) => {
+  const deleteButton = event.target.closest('[data-delete-kind]');
+  if (deleteButton) {
+    withBusy(deleteButton, () => deleteOwnContent(deleteButton));
+    return;
+  }
   const feedbackButton = event.target.closest('[data-feedback-type]');
   if (feedbackButton) {
     openFeedback(feedbackButton.dataset.feedbackType, feedbackButton.dataset.feedbackId, feedbackButton.dataset.feedbackTitle)

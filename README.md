@@ -17,6 +17,7 @@
 - 2025、2026 年刊：整刊阅读、各 35 篇分篇 PDF、年份切换、文章/作者搜索与类型筛选
 - 社刊与创作互动：正式账号可为整期社刊、每篇社刊文章和成员作品分别进行五星评分、发表评论
 - 社员创作：正式账号上传 PDF 或 DOCX，可实名或匿名发布；DOCX 会先在浏览器转为 PDF，云端统一保存 PDF
+- 本人内容管理：正式账号可删除本人发布的书目评论、社刊/作品点评、评分和成员作品
 - 账号：用户名和密码注册、登录、退出；账号名用于实名署名
 - 权限：未注册访客只读；正式账号才可评论、评分、投票、建书目和投稿
 - 实时同步：书目、互动、活动、社刊与创作变更通过 Supabase Realtime 更新
@@ -71,8 +72,9 @@
 5. `supabase/migrations/20260920_add_2026_issue_articles.sql`
 6. `supabase/migrations/20260920_add_2025_issue_articles.sql`
 7. `supabase/migrations/20260920_add_content_feedback_and_pdf_uploads.sql`
+8. `supabase/migrations/20260921_add_owner_deletion.sql`
 
-最后一个迁移会创建账号资料、社刊、创作表和两个私有 Bucket，同时收紧现有书目互动的写权限。脚本使用 `if not exists` 和 `drop policy if exists`，方便维护时重新执行；但仍建议先备份生产数据。
+第 4 个迁移会创建账号资料、社刊、创作表和两个私有 Bucket，并收紧现有书目互动的写权限；第 7 个迁移增加社刊、文章与作品的点评评分；第 8 个迁移开放“仅删除本人内容”的最小权限。脚本使用 `if not exists` 和 `drop policy if exists`，方便维护时重新执行；但仍建议先备份生产数据。
 
 ## Supabase Auth 设置
 
@@ -147,7 +149,7 @@ DOCX 转换在用户浏览器内完成：Mammoth 读取文档内容，DOMPurify 
 - `hidden`：隐藏但保留文件和记录
 - `draft`：仅作者本人可读
 
-删除记录前应同时在 Storage → `creations` 删除对应 `file_path`，避免孤立文件。网页在数据库插入失败时会自动回滚刚上传的文件。
+作者可在网页作品卡片上删除本人作品；网页会删除数据库记录并清理 Storage 中对应的 `file_path`。管理员在 Dashboard 手工删除时也应同时清理 Storage，避免孤立文件。网页在数据库插入失败时会自动回滚刚上传的文件。
 
 账号名保存在 `member_profiles` 且忽略大小写唯一。不要直接编辑 `auth.users`；封禁或删除账号应使用 Authentication → Users。删除 Auth 用户会级联删除其资料和创作记录，但 Storage 对象不会自动级联，应先清理该用户 UUID 文件夹。
 
